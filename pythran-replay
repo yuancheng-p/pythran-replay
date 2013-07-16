@@ -1,1 +1,153 @@
-test
+#!/usr/bin/env python
+import argparse
+import imp
+import os
+from time import time
+import git
+try:
+    from collections import OrderedDict
+except:
+    from ordereddict import OrderedDict
+
+REPO = git.Repo(os.getcwd())
+
+
+def run_benchmark(name, func, args, kwargs, n_runs=20):
+    """Call a function with the provided arguments"""
+    def time_once():
+        tic = time()
+        func(*args, **kwargs)
+        toc = time()
+        return toc - tic
+
+    all_timings = []
+    for i in range(n_runs):
+        all_timings.append(time_once())
+
+    best_timing = min(all_timings)
+
+    return dict([
+        ('name', name),
+        ('best_time', best_timing),
+    ])
+
+
+def iter_count_commits(branch, begin, count, step=1):
+    """ Iterate commits with a begin commit
+
+    count is the number of commits retured
+    step is the distance between two commits
+    """
+    commits = REPO.iter_commits(branch, max_count=count * step)
+    cnt = 0
+    already_begin = False
+
+    for commit in commits:
+        if commit.__str__() == begin or already_begin:
+            if not already_begin:
+                already_begin = True
+            if cnt % step == 0:
+                yield commit
+            cnt += 1
+
+
+def iter_commits(branch, begin, end, step=1):
+    """ Iterate commits with a begin commit and an end commit
+
+    step is the distance between two commits
+    """
+    commits = REPO.iter_commits(branch)
+    cnt = 0
+    already_begin = False
+
+    for commit in commits:
+        if commit.__str__() == end:
+            break
+
+        if commit.__str__() == begin or already_begin:
+            if not already_begin:
+                already_begin = True
+            if cnt % step == 0:
+                yield commit
+            cnt += 1
+
+
+def compile_bench_for_commit(bench, commit):
+    """comile a bench for a pythran commit
+
+    the bench is the **pythran file name**
+    """
+    REPO.git.checkout(commit)
+    print "------current commit: " + REPO.head.commit.__str__()
+    script = "./scripts/pythran  " +\
+        options.folder + bench
+    os.system(script)
+
+
+def make_env(folder):
+    """ prepare execute envirement for a benchmark
+    """
+    dotted_folder = re.sub(r'/', '.', folder) # FIXME
+    pkg = __import__(
+        dotted_folder,
+        fromlist=['make_env', 'int_sum_python'])
+    args, kwargs = pkg.make_env()
+    return args, kwargs
+
+
+def parse_args(args):
+    parser = argparse.ArgumentParser(
+        description="Pythran commits replay tool")
+    parser.add_argument(
+        "folder", default=None,
+        help="Pythran benchmark folder")
+    parser.add_argument(
+        "-n",
+        help="Number of times the script is run for benchmark")
+    parser.add_argument(
+        "-r", default=None,
+        help="Starting and ending commit_id r0:rN:step.")
+    parser.add_argument(
+        "--crange",
+        help="Starting commit_id and number of commits r0:N:step.")
+    parser.add_argument(
+        "-c", help="Run a benchmark for a specific commit")
+    parser.add_argument(
+        "-b", "--branch", default='serge/master', help="branch name")
+    return parser.parse_args()
+
+
+def clean_workspace():
+    os.system("rm -f *.so")
+
+
+if __name__ == "__main__":
+    import sys
+    import re
+    options = parse_args(sys.argv[1:])
+
+    branch = options.branch
+    begin = "9887815c92b64b36ebb4d229e1c3a6e52cb80329"
+    if options.r:
+        print options.r # TODO
+
+    # TODO Load benchmark dynamically
+    bench_name = "int_sum_python"
+    bench = "int_sum_python.py"
+    first_bench_import = True
+
+    args, kwargs = make_env(options.folder)
+    commits = iter_count_commits(branch, begin, 10, 2)
+
+    for commit in commits:
+        print commit
+        compile_bench_for_commit(bench, commit)
+        if first_bench_import:
+            out_pkg = __import__(bench_name)
+            first_bench_import = False
+
+        out_pkg = reload(out_pkg)
+
+        func = out_pkg.int_sum_python
+        print run_benchmark('int_sum_python', func, args, kwargs)
+        clean_workspace()
