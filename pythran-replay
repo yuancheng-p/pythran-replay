@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+"""
+example:
+    ./pythran-replay ./benchmark/dprod/dprod.py -s 'from dprod import dprod;l0=[1]*1000;l1=[2]*1000' 'dprod(l0,l1)' --count_rng 9887815c92b64b36ebb4d229e1c3a6e52cb80329:3:2
+"""
 import argparse
 import imp
 import os
@@ -20,7 +24,7 @@ def time_once(statements):
     return toc - tic
 
 
-def run_statements(statements, count=100):
+def run_statements(statements, count=10):
     """run a list of statement 'count' times
     return best timing
     """
@@ -39,11 +43,14 @@ def iter_count_commits(branch, begin, count, step=1):
     count is the number of commits retured
     step is the distance between two commits
     """
-    commits = REPO.iter_commits(branch, max_count=count * step)
+    commits = REPO.iter_commits(branch)
     cnt = 0
     already_begin = False
 
     for commit in commits:
+        if cnt == count:
+            break
+
         if commit.__str__() == begin or already_begin:
             if not already_begin:
                 already_begin = True
@@ -115,13 +122,13 @@ def parse_args(args):
     # Other options
     # TODO default begin is HEAD
     parser.add_argument(
-        "-r", default=None,
+        "-r", "--rng", default=None,
         help="Starting and ending commit_id r0:rN:step.")
     parser.add_argument(
-        "--count_range",
+        "--count_rng",
         help="Starting commit_id and number of commits r0:N:step.")
     parser.add_argument(
-        "-c", help="Run a benchmark for a specific commit")
+        "-c", "--commit", help="Run a benchmark for a specific commit")
 
     return parser.parse_args()
 
@@ -138,8 +145,10 @@ def bench_analyse(folder):
     """
     pass
 
+
 def plot_results(results):
     pass
+
 
 if __name__ == "__main__":
     import sys
@@ -151,27 +160,57 @@ if __name__ == "__main__":
     *statement:  statement to be executed once initially
      setup:      statement to be executed once initially
      n:          how many times to execute 'statement'
+     rng:        Starting and ending commit_id r0:rN:step.
+     count_rng:  Starting commit_id and number of commits r0:N:step.
+     commit:     Run a benchmark for a specific commit
     """
 
-    begin = "9887815c92b64b36ebb4d229e1c3a6e52cb80329"
+    if options.count_rng:
+        cnt_range = options.count_rng.split(":")
+        # TODO commit id perhaps can not be found in this branch
+        commits = iter_count_commits(
+            options.branch, 
+            cnt_range[0], int(cnt_range[1]), int(cnt_range[2]))
+    elif options.rng:
+        rng = options.rng.split(":")
+        # TODO commit id perhaps can not be found in this branch
+        commits = iter_commits(
+            options.branch,
+            rng[0], rng[1], int(rng[2]))
+    elif options.commit:
+        # TODO commit id perhaps can not be found in this branch
+        commits = iter_count_commits(
+            options.branch, 
+            options.commit, 1, 1)
+    else:
+        print "No commits choosed, only the head commit will be run."
+        commits = iter_count_commits(
+            options.branch, 
+            REPO.heads[options.branch].commit.__str__(), 1, 1)
 
     # pick the commits selected
-    commits = iter_count_commits(options.branch, begin, 20, 2)
-
     clean_workspace()
+    results = {}
     begin_run = time()
     for commit in commits:
         # compile
-        c_time = compile_bench_for_commit(options.bench, commit)
-        print "-----compiled time: " + str(c_time)
-
+        compile_time = compile_bench_for_commit(options.bench, commit)
+        print "----------compiled time: " + str(compile_time)
         # setup environment
         if options.setup:
             exec options.setup
-
         # run statements
-        print run_statements(options.statement, options.n)
+        best_time = run_statements(options.statement, options.n)
+        print best_time
+
+        ##### log the results
+        tmp_result = {
+                "compile_time" : compile_time,
+                "best_time" : best_time}
+        results[commit] = tmp_result
+        ####
         clean_workspace()
+
     end_run = time()
 
     print "==========================finished in {} secs\
