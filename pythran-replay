@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 """
-example:
-    ./pythran-replay ./benchmark/dprod/dprod.py -s 'from dprod import dprod;l0=[1]*1000;l1=[2]*1000' 'dprod(l0,l1)' --count_rng 9887815c92b64b36ebb4d229e1c3a6e52cb80329:3:2
+./pythran-replay ./benchmark/dprod/dprod.py -s 'from dprod import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod(l0,l1)' -b master --count_rng cc9294c07bfcc46540223700a1bb951219dccabc:20:2  -n 100
 """
 import argparse
 import imp
 import os
-from time import time
+from time import time, strftime, gmtime
 import git
 try:
     from collections import OrderedDict
 except:
     from ordereddict import OrderedDict
 import logging
+import matplotlib.pyplot as plt
 
 REPO = git.Repo(os.getcwd())
 
@@ -106,7 +106,7 @@ def compile_bench_for_commit(bench, commit):
 
     REPO.git.checkout(commit)
     log.info("current commit: " + REPO.head.commit.__str__())
-    script = "./scripts/pythran  " + bench
+    script = "python ./scripts/pythran  " + bench
     return compile_once(script)
 
 
@@ -116,31 +116,33 @@ def parse_args(args):
     ./pythran-reply <pythran file> [-s SETUP] [statement]
     """
     parser = argparse.ArgumentParser(
-        description="Pythran commits replay tool")
+        description="Pythran Commits Replay Tool")
     # positional
     parser.add_argument("bench", type=str, help="Pythran declared python file")
     parser.add_argument("statement", type=str, nargs="+", help="")
 
     # optional
     # TODO setup can be a python file ?
-    parser.add_argument("-s", "--setup", #type=str,
+    parser.add_argument("-s", "--setup",
         help="statement to be executed once initially")
     parser.add_argument("-n", type=int, default=10000,
         help="how many times to execute 'statement'")
+    parser.add_argument("-r", "--repeat", type=int, default=3)
+
 
     parser.add_argument(
-        "-b", "--branch", default='master', help="branch name")
+        "-b", "--branch", default='master', help="git branch, by default master")
 
-    # Other options
-    # TODO default begin is HEAD
-    parser.add_argument(
-        "-r", "--rng", default=None,
-        help="Starting and ending commit_id r0:rN:step.")
-    parser.add_argument(
+    # group options
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--rng", default=None,
+        help="starting and ending commit_id r_0:r_n:step.")
+    group.add_argument(
         "--count_rng",
-        help="Starting commit_id and number of commits r0:N:step.")
-    parser.add_argument(
-        "-c", "--commit", help="Run a benchmark for a specific commit")
+        help="starting commit_id and number of commits r_0:n:step.")
+    group.add_argument(
+        "-c", "--commit", help="run for a specific commit")
 
     return parser.parse_args()
 
@@ -149,17 +151,47 @@ def clean_workspace():
     os.system("rm -f *.so")
 
 
-def bench_analyse(folder):
-    """analyse a relative path
-
-    return: benchmark functions object
-            make_env
+def plot_results(results, figname):
     """
-    pass
+    results is an OrderedDict
+    x: commit_time
+    y: best_time
+    """
+    def normalize(l):
+        max_value = max(l)
+        min_value = min(l)
+        scale = max_value - min_value
+        for i in xrange(len(l)):
+            l[i] = (l[i] - min_value) / scale
+        return l
 
+    commits_time = []
+    xcnts = []
+    perfs = []
+    cnt = 0
+    for commit, result in results.items():
+        cnt += 1
+        xcnts.append(cnt)
+        timestr = strftime("%X, %x",
+                gmtime(commit.committed_date))
+        commits_time.append(timestr)
+        perfs.append(result['best_time'])
 
-def plot_results(results):
-    pass
+    commits_time.reverse()
+    perfs.reverse()
+    #perfs = normalize(perfs)
+
+    plt.xlabel("commits_time")
+    plt.xticks(xcnts, commits_time, rotation=15)
+    plt.ylabel("perfs")
+    plt.title("commits performance history")
+    plt.legend()
+    plt.plot(xcnts, perfs, '--r*', label="$master$")
+
+    filepath = "%s.png" % (figname)
+    plt.savefig(filepath)
+
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -169,9 +201,10 @@ if __name__ == "__main__":
 
     """ in the options:
     *bench:      pythran file path
-    *statement:  statement to be executed once initially
+    *statement:  statement to time
      setup:      statement to be executed once initially
      n:          how many times to execute 'statement'
+     repeat:     number of experiments
      rng:        Starting and ending commit_id r0:rN:step.
      count_rng:  Starting commit_id and number of commits r0:N:step.
      commit:     Run a benchmark for a specific commit
@@ -202,27 +235,38 @@ if __name__ == "__main__":
 
     # pick the commits selected
     clean_workspace()
-    results = {}
+    results = OrderedDict()
     begin_run = time()
     for commit in commits:
         # compile
         compile_time = compile_bench_for_commit(options.bench, commit)
-        log.info("compiled time: " + str(compile_time))
+        log.info("**compiled time: " + str(compile_time))
         # setup environment
         if options.setup:
             exec options.setup
         # run statements
-        best_time = run_statements(options.statement, options.n)
-        log.info("best time: {}".format(best_time))
+        records = []
+        ######### perhaps use timeit ##########
+        for i in xrange(options.repeat):
+            records.append(run_statements(options.statement, options.n))
+        best_time = min(records)
+        log.info(
+                "**{} loops, best of {}: {} sec per loop".format(
+                    options.n, options.repeat, best_time 
+                    ))
+        #######################################
 
         ##### log the results
-        tmp_result = {
+        tmp_result = OrderedDict({
                 "compile_time" : compile_time,
-                "best_time" : best_time}
+                "best_time" : best_time})
         results[commit] = tmp_result
         ####
         clean_workspace()
-
+    
+    log.info("plotting results")
+    figname = "%s_%s.png" % ("dprod", options.branch)
+    plot_results(results, options.branch)
     end_run = time()
 
     print "==========================finished in {} secs\
