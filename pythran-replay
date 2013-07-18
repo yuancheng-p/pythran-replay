@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 """
-./pythran-replay ./benchmark/dprod/dprod.py -s 'from dprod import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod(l0,l1)' -b master --count_rng cc9294c07bfcc46540223700a1bb951219dccabc:20:2  -n 100
+./pythran-replay ./benchmark/dprod/dprod.py
+    -s 'from dprod import dprod;l0=[1]*100000;l1=[2]*100000'
+    'dprod(l0,l1)' -b master -n 100
+    --count_rng cc9294c07bfcc46540223700a1bb951219dccabc:20:2
 """
 import argparse
 import imp
 import os
 from time import time, strftime, gmtime
+import timeit
 import git
 try:
     from collections import OrderedDict
@@ -25,28 +29,6 @@ formatter = logging.Formatter(
     '%(asctime)s\t%(levelname)s:  %(message)s', '%m/%d/%Y %H:%M:%S')
 ch.setFormatter(formatter)
 log.addHandler(ch)
-
-
-
-def time_once(statements):
-    tic = time()
-    for statement in statements:
-        exec statement
-    toc = time()
-    return toc - tic
-
-
-def run_statements(statements, count=10):
-    """run a list of statement 'count' times
-    return best timing
-    """
-    all_timings = []
-    for i in xrange(count):
-        all_timings.append(time_once(statements))
-
-    best_timing = min(all_timings)
-
-    return best_timing
 
 
 def iter_count_commits(branch, begin, count, step=1):
@@ -123,17 +105,22 @@ def parse_args(args):
 
     # optional
     # TODO setup can be a python file ?
-    parser.add_argument("-s", "--setup",
-        help="statement to be executed once initially")
-    parser.add_argument("-n", type=int, default=10000,
-        help="how many times to execute 'statement'")
-    parser.add_argument("-r", "--repeat", type=int, default=3)
-
-
     parser.add_argument(
-        "-b", "--branch", default='master', help="git branch, by default master")
+        "-s", "--setup",
+        help="statement to be executed once initially")
+    parser.add_argument(
+        "-n", type=int, default=10000,
+        help="how many times to execute 'statement'")
+    parser.add_argument(
+        "-r", "--repeat", type=int, default=3)
+    parser.add_argument(
+        "-b", "--branch", default='master',
+        help="git branch, by default master")
+    parser.add_argument(
+        "--show", action="store_true",
+        help="show plot results after execution")
 
-    # group options
+    # commits selection
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "--rng", default=None,
@@ -151,10 +138,10 @@ def clean_workspace():
     os.system("rm -f *.so")
 
 
-def plot_results(results, figname):
+def plot_results(results, figname, show=True):
     """
     results is an OrderedDict
-    x: commit_time
+    x: commit_date
     y: best_time
     """
     def normalize(l):
@@ -167,31 +154,34 @@ def plot_results(results, figname):
 
     commits_time = []
     xcnts = []
-    perfs = []
+    execute_times = []
     cnt = 0
     for commit, result in results.items():
         cnt += 1
         xcnts.append(cnt)
-        timestr = strftime("%X, %x",
-                gmtime(commit.committed_date))
+        timestr = strftime(
+            "%X, %x", gmtime(commit.committed_date))
         commits_time.append(timestr)
-        perfs.append(result['best_time'])
+        execute_times.append(result['best_time'])
 
     commits_time.reverse()
-    perfs.reverse()
-    #perfs = normalize(perfs)
+    execute_times.reverse()
+    #execute_times = normalize(execute_times)
 
-    plt.xlabel("commits_time")
+    plt.xlabel("commit_date")
     plt.xticks(xcnts, commits_time, rotation=15)
-    plt.ylabel("perfs")
+    plt.ylabel("execute_time")
     plt.title("commits performance history")
-    plt.legend()
-    plt.plot(xcnts, perfs, '--r*', label="$master$")
+#    plt.legend()
+
+    # TODO users can choose the scale of Y axis
+    plt.plot(xcnts, execute_times, '--r*', label="$master$")
 
     filepath = "%s.png" % (figname)
-    plt.savefig(filepath)
+    plt.savefig(filepath, dpi=100)
 
-    plt.show()
+    if show:
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -208,13 +198,14 @@ if __name__ == "__main__":
      rng:        Starting and ending commit_id r0:rN:step.
      count_rng:  Starting commit_id and number of commits r0:N:step.
      commit:     Run a benchmark for a specific commit
+     show:       show plot figure after execution
     """
 
     if options.count_rng:
         cnt_range = options.count_rng.split(":")
         # TODO commit id perhaps can not be found in this branch
         commits = iter_count_commits(
-            options.branch, 
+            options.branch,
             cnt_range[0], int(cnt_range[1]), int(cnt_range[2]))
     elif options.rng:
         rng = options.rng.split(":")
@@ -225,49 +216,42 @@ if __name__ == "__main__":
     elif options.commit:
         # TODO commit id perhaps can not be found in this branch
         commits = iter_count_commits(
-            options.branch, 
+            options.branch,
             options.commit, 1, 1)
     else:
         log.info("No commits choosed, only the head commit will be run.")
         commits = iter_count_commits(
-            options.branch, 
+            options.branch,
             REPO.heads[options.branch].commit.__str__(), 1, 1)
 
     # pick the commits selected
     clean_workspace()
     results = OrderedDict()
+
     begin_run = time()
     for commit in commits:
         # compile
         compile_time = compile_bench_for_commit(options.bench, commit)
         log.info("**compiled time: " + str(compile_time))
-        # setup environment
-        if options.setup:
-            exec options.setup
-        # run statements
-        records = []
-        ######### perhaps use timeit ##########
-        for i in xrange(options.repeat):
-            records.append(run_statements(options.statement, options.n))
-        best_time = min(records)
-        log.info(
-                "**{} loops, best of {}: {} sec per loop".format(
-                    options.n, options.repeat, best_time 
-                    ))
-        #######################################
 
-        ##### log the results
+        t = timeit.Timer(stmt="\n".join(options.statement), setup=options.setup)
+        records = t.repeat(repeat=options.repeat, number=options.n)
+        best_time = min(records)
+        log.info("**{} loops, best of {}: {} usec per loop".format(
+            options.n, options.repeat, best_time))
+
+        # log the results
         tmp_result = OrderedDict({
-                "compile_time" : compile_time,
-                "best_time" : best_time})
+            "compile_time": compile_time,
+            "best_time": best_time})
         results[commit] = tmp_result
-        ####
+
         clean_workspace()
-    
+    end_run = time()
+
     log.info("plotting results")
     figname = "%s_%s.png" % ("dprod", options.branch)
-    plot_results(results, options.branch)
-    end_run = time()
+    plot_results(results, options.branch, show=options.show)
 
     print "==========================finished in {} secs\
 ==========================".format(end_run - begin_run)
