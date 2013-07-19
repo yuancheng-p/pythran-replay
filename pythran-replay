@@ -17,6 +17,8 @@ except:
     from ordereddict import OrderedDict
 import logging
 import matplotlib.pyplot as plt
+import commands
+import sys
 
 
 # log settings
@@ -30,12 +32,27 @@ ch.setFormatter(formatter)
 log.addHandler(ch)
 
 
+#TODO verify branch in the REPO
+
+def verify_commit(branch, commit):
+    commits = REPO.iter_commits(branch)
+    for current in commits:
+        if current.__str__() == commit:
+            return True
+    log.error(
+        "commit \"%s\" is not in the branch \"%s\"" %
+        (commit, branch))
+    sys.exit()
+
+
 def iter_count_commits(branch, begin, count=1, step=1):
     """ Iterate commits with a begin commit
 
     count is the number of commits retured
     step is the distance between two commits
     """
+    verify_commit(branch, begin)
+
     commits = REPO.iter_commits(branch)
     cnt = 0
     already_begin = False
@@ -57,6 +74,9 @@ def iter_commits(branch, begin, end, step=1):
 
     step is the distance between two commits
     """
+    verify_commit(branch, begin)
+    verify_commit(branch, end)
+
     commits = REPO.iter_commits(branch)
     cnt = 0
     already_begin = False
@@ -73,23 +93,35 @@ def iter_commits(branch, begin, end, step=1):
             cnt += 1
 
 
-def compile_bench_for_commit(bench, commit, url="."):
+def compile_bench_for_commit(bench, commit, url=".", quiet=False):
     """comile a bench for a pythran commit
 
     the bench is the **pythran file path**
-    return: compile time
+    return: * compile time
+            * -1 if compile failed
     """
     def compile_once(script):
         tic = time()
-        #TODO compile errors
-        os.system(script)
+        fail = commands.getstatusoutput(script)
         toc = time()
+        if fail != (0, ''):
+            raise Exception(fail[1])
         return toc - tic
 
     REPO.git.checkout(commit)
     log.info("current commit: " + REPO.head.commit.__str__())
     script = "python %s/scripts/pythran %s" % (url, bench)
-    return compile_once(script)
+    try:
+        compile_time = compile_once(script)
+    except Exception as e:
+        error_type = type(e).__name__
+        error_msg = str(e)
+        log.error("**Failed to compile %s", bench)
+        # TODO it could be a pythran's compile warning
+        if not quiet:
+            log.error("\n%s" % error_msg)
+        return -1
+    return compile_time
 
 
 def clean_workspace():
@@ -168,6 +200,9 @@ def parse_args(args):
     parser.add_argument(
         "--url", type=str, default=".",
         help="pythran repository path")
+    parser.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="do not show pythran compile error or warning message")
 
     # commits selection
     group = parser.add_mutually_exclusive_group()
@@ -181,28 +216,7 @@ def parse_args(args):
     return parser.parse_args()
 
 
-if __name__ == "__main__":
-    import sys
-    import re
-
-    options = parse_args(sys.argv[1:])
-    global REPO
-
-    """ in the options:
-    *bench:      pythran file path
-    *statement:  statement to time
-     setup:      statement to be executed once initially
-     n:          how many times to execute 'statement'
-     repeat:     number of experiments
-     range:      r0[:r1[:step]]
-     count_range:Starting commit_id and number of commits r0:N:step.
-     show:       show plot figure after execution
-     url:        pythran repository path
-    """
-
-    REPO = git.Repo(options.url)
-
-    # pick the selected commits
+def get_commits(options):
     if options.range:
         regex = "^[0-9a-zA-Z]{40,40}(:[0-9a-zA-Z]{40,40})?(:[0-9]{1,3})?$"
         if not re.match(regex, options.range):
@@ -235,6 +249,38 @@ if __name__ == "__main__":
         commits = iter_count_commits(
             options.branch, REPO.heads[options.branch].commit.__str__(), 1, 1)
 
+    return commits
+
+
+if __name__ == "__main__":
+    import re
+
+    options = parse_args(sys.argv[1:])
+    global REPO
+
+    """ in the options:
+    *bench:      pythran file path
+    *statement:  statement to time
+     setup:      statement to be executed once initially
+     n:          how many times to execute 'statement'
+     repeat:     number of experiments
+     range:      r0[:r1[:step]]
+     count_range:Starting commit_id and number of commits r0:N:step.
+     show:       show plot figure after execution
+     url:        pythran repository path
+     quiet:      do not print pythran error msg
+    """
+
+    REPO = git.Repo(options.url)
+
+    # TODO verify if bench exists
+    if not os.path.exists(options.bench):
+        log.error("file \"%s\" doesn't exist" % options.bench)
+        sys.exit()
+    
+    # pick the selected commits
+    commits = get_commits(options)
+
     clean_workspace()
     results = OrderedDict()
 
@@ -242,8 +288,12 @@ if __name__ == "__main__":
     for commit in commits:
         # compile
         compile_time = compile_bench_for_commit(
-            options.bench, commit, options.url)
-        log.info("**compiled time: " + str(compile_time))
+            options.bench, commit, options.url, quiet=options.quiet)
+
+        if compile_time == -1:
+            continue
+
+        log.info("**compiled time: %.3f" % compile_time)
 
         # TODO errors in the timit. (import error..)
         t = timeit.Timer(
@@ -266,5 +316,5 @@ if __name__ == "__main__":
     figname = "%s_%s.png" % ("dprod", options.branch)
     plot_results(results, options.branch, show=options.show)
 
-    print "==========================finished in {} secs\
-==========================".format(end_run - begin_run)
+    print "================================ \
+finished in %.3f secs ================================" % (end_run - begin_run)
