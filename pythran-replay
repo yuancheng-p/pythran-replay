@@ -2,7 +2,7 @@
 """
 ./pythran-replay ./benchmark/dprod/dprod.py
     -s 'from dprod import dprod;l0=[1]*100000;l1=[2]*100000'
-    'dprod(l0,l1)' -b master -n 100
+    'dprod(l0,l1)' --url ../pythran -b master -n 100
     --count_rng cc9294c07bfcc46540223700a1bb951219dccabc:20:2
 """
 import argparse
@@ -18,6 +18,7 @@ except:
 import logging
 import matplotlib.pyplot as plt
 
+
 # log settings
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
@@ -29,7 +30,7 @@ ch.setFormatter(formatter)
 log.addHandler(ch)
 
 
-def iter_count_commits(branch, begin, count, step=1):
+def iter_count_commits(branch, begin, count=1, step=1):
     """ Iterate commits with a begin commit
 
     count is the number of commits retured
@@ -72,7 +73,7 @@ def iter_commits(branch, begin, end, step=1):
             cnt += 1
 
 
-def compile_bench_for_commit(bench, commit, repo_path="."):
+def compile_bench_for_commit(bench, commit, url="."):
     """comile a bench for a pythran commit
 
     the bench is the **pythran file path**
@@ -80,59 +81,15 @@ def compile_bench_for_commit(bench, commit, repo_path="."):
     """
     def compile_once(script):
         tic = time()
+        #TODO compile errors
         os.system(script)
         toc = time()
         return toc - tic
 
     REPO.git.checkout(commit)
     log.info("current commit: " + REPO.head.commit.__str__())
-    script = "python %s/scripts/pythran %s" % (repo_path, bench)
+    script = "python %s/scripts/pythran %s" % (url, bench)
     return compile_once(script)
-
-
-def parse_args(args):
-    """
-    classic senario:
-    ./pythran-reply <pythran file> [-s SETUP] [statement]
-    """
-    parser = argparse.ArgumentParser(
-        description="Pythran Commits Replay Tool")
-    # positional
-    parser.add_argument("bench", type=str, help="Pythran declared python file")
-    parser.add_argument("statement", type=str, nargs="+", help="")
-
-    # optional
-    # TODO setup can be a python file ?
-    parser.add_argument(
-        "-s", "--setup",
-        help="statement to be executed once initially")
-    parser.add_argument(
-        "-n", type=int, default=10000,
-        help="how many times to execute 'statement'")
-    parser.add_argument(
-        "-r", "--repeat", type=int, default=3)
-    parser.add_argument(
-        "-b", "--branch", default='master',
-        help="git branch, by default master")
-    parser.add_argument(
-        "--show", action="store_true",
-        help="show plot results after execution")
-    parser.add_argument(
-        "--repo_path", type=str, default=".",
-        help="pythran repository path")
-
-    # commits selection
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-        "--rng", default=None,
-        help="starting and ending commit_id r_0:r_n:step.")
-    group.add_argument(
-        "--count_rng",
-        help="starting commit_id and number of commits r_0:n:step.")
-    group.add_argument(
-        "-c", "--commit", help="run for a specific commit")
-
-    return parser.parse_args()
 
 
 def clean_workspace():
@@ -177,6 +134,53 @@ def plot_results(results, figname, show=True):
         plt.show()
 
 
+def parse_args(args):
+    """
+    """
+    parser = argparse.ArgumentParser(
+        description="Pythran Commits Replay Tool")
+    # positional
+    parser.add_argument("bench", type=str, help="Pythran declared python file")
+    parser.add_argument("statement", type=str, nargs="+", help="")
+
+    try:
+        import argcomplete
+        argcomplete.autocomplete(parser)
+    except:
+        log.warn("argcomplete not found")
+
+    # optional
+    # TODO setup can be a python file ?
+    parser.add_argument(
+        "-s", "--setup",
+        help="statement to be executed once initially")
+    parser.add_argument(
+        "-n", type=int, default=10000,
+        help="how many times to execute 'statement'")
+    parser.add_argument(
+        "-r", "--repeat", type=int, default=3)
+    parser.add_argument(
+        "-b", "--branch", default='master',
+        help="git branch, by default master")
+    parser.add_argument(
+        "--show", action="store_true",
+        help="show plot results after execution")
+    parser.add_argument(
+        "--url", type=str, default=".",
+        help="pythran repository path")
+
+    # commits selection
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--range", default=None,
+        help="r0[:rn[:step]]")
+    group.add_argument(
+        "--count_range", default=None,
+        help="starting commit_id and number of commits r_0:n:step.")
+
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     import sys
     import re
@@ -190,48 +194,58 @@ if __name__ == "__main__":
      setup:      statement to be executed once initially
      n:          how many times to execute 'statement'
      repeat:     number of experiments
-     rng:        Starting and ending commit_id r0:rN:step.
-     count_rng:  Starting commit_id and number of commits r0:N:step.
-     commit:     Run a benchmark for a specific commit
+     range:      r0[:r1[:step]]
+     count_range:Starting commit_id and number of commits r0:N:step.
      show:       show plot figure after execution
-     repo_path:  pythran repository path
+     url:        pythran repository path
     """
 
-    REPO = git.Repo(options.repo_path)
+    REPO = git.Repo(options.url)
 
-    if options.count_rng:
-        cnt_range = options.count_rng.split(":")
-        # TODO commit id perhaps can not be found in this branch
+    # pick the selected commits
+    if options.range:
+        regex = "^[0-9a-zA-Z]{40,40}(:[0-9a-zA-Z]{40,40})?(:[0-9]{1,3})?$"
+        if not re.match(regex, options.range):
+            print "--range is not valid!"
+            sys.exit()
+        selects = options.range.split(":")
+        if len(selects) == 1:
+            commits = iter_count_commits(
+                options.branch,
+                selects[0], 1, 1)
+        elif len(selects) == 2:
+            commits = iter_commits(
+                options.branch,
+                selects[0], selects[1], 1)
+        elif len(selects) == 3:
+            commits = iter_commits(
+                options.branch,
+                selects[0], selects[1], selects[2])
+    elif options.count_range:
+        regex = "^[0-9a-zA-Z]{40,40}(:[0-9]{1,4})?(:[0-9]{1,3})?$"
+        if not re.match(regex, options.count_range):
+            print "--count_range is not valid!"
+            sys.exit()
+        cnt_rng = options.count_range.split(":")
         commits = iter_count_commits(
-            options.branch,
-            cnt_range[0], int(cnt_range[1]), int(cnt_range[2]))
-    elif options.rng:
-        rng = options.rng.split(":")
-        # TODO commit id perhaps can not be found in this branch
-        commits = iter_commits(
-            options.branch,
-            rng[0], rng[1], int(rng[2]))
-    elif options.commit:
-        # TODO commit id perhaps can not be found in this branch
-        commits = iter_count_commits(
-            options.branch,
-            options.commit, 1, 1)
+            options.branch, cnt_rng[0],
+            int(cnt_rng[1]), int(cnt_rng[2]))
     else:
         log.info("No commits choosed, only the head commit will be run.")
         commits = iter_count_commits(
-            options.branch,
-            REPO.heads[options.branch].commit.__str__(), 1, 1)
+            options.branch, REPO.heads[options.branch].commit.__str__(), 1, 1)
 
-    # pick the commits selected
     clean_workspace()
     results = OrderedDict()
 
     begin_run = time()
     for commit in commits:
         # compile
-        compile_time = compile_bench_for_commit(options.bench, commit, options.repo_path)
+        compile_time = compile_bench_for_commit(
+            options.bench, commit, options.url)
         log.info("**compiled time: " + str(compile_time))
 
+        # TODO errors in the timit. (import error..)
         t = timeit.Timer(
             stmt="\n".join(options.statement), setup=options.setup)
         records = t.repeat(repeat=options.repeat, number=options.n)
