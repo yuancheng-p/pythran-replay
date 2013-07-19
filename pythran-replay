@@ -8,7 +8,7 @@
 import argparse
 import imp
 import os
-from time import time, strftime, gmtime
+from time import time, strftime, localtime
 import timeit
 import git
 try:
@@ -126,7 +126,43 @@ def clean_workspace():
     os.system("rm -f *.so")
 
 
-def plot_results(results, figname, show=True):
+def build_reports(results, filename="report"):
+    """
+    need each commit message
+    """
+    filepath = "%s.log" % (filename)
+    fnum = 0
+    while os.path.exists(filepath):
+        fnum += 1
+        filepath = "%s_(%d).log" % (filename, fnum)
+    log.info("Building reports \"%s\"" % filepath)
+
+    f = file(filepath, "w")
+
+    count = 1
+    for commit, result in results.items():
+        f.write(
+            """
+[commit %d] %s
+    Compile time: %s
+    Best time: %s
+    Author: %s
+    Authored date: %s
+    message: %s
+
+            """ % (
+            count, commit.hexsha,
+            result['compile_time'],
+            result['best_time'],
+            commit.author.name.encode("utf8"),
+            strftime("%X, %x, %Z", localtime(commit.authored_date)),
+            commit.message.encode("utf8")))
+        count += 1
+
+    f.close()
+
+
+def plot_results(results, figname, show=True, scale=None):
     """
     results is an OrderedDict
     x: commit_date
@@ -141,28 +177,36 @@ def plot_results(results, figname, show=True):
     for commit, result in results.items():
         cnt += 1
         xcnts.append(cnt)
-        timestr = strftime(
-            "%X, %x", gmtime(commit.committed_date))
-        commits_time.append(timestr)
         execute_times.append(result['best_time'])
 
-    commits_time.reverse()
-    execute_times.reverse()
-
-    plt.xlabel("commit_date")
-    plt.xticks(xcnts, commits_time, rotation=15)
-    plt.ylabel("execute_time")
-    plt.title("commits performance history")
+    plt.xlabel("Commit")
+    reversed_xcnts = range(len(xcnts) + 1)[1:]
+    reversed_xcnts.reverse()
+    plt.xticks(xcnts, reversed_xcnts)
+    plt.ylabel("Best execute time")
+    plt.title("Commits Performance History")
 
     # TODO users may choose the scale of Y axis
     plt.plot(xcnts, execute_times, '--r*', label="$master$")
+
+    if scale:
+        plt.ylim(scale)
+    else:
+        up = max(execute_times) + 0.1
+        down = min(execute_times) - 0.1
+        plt.ylim([down, up])
+
+    plt.xlim([0, xcnts[-1] + 1])
 
     filepath = "%s.png" % (figname)
     fnum = 0
     while os.path.exists(filepath):
         fnum += 1
-        filepath = "%s_(%d).png" % (figname, fnum)
-    plt.savefig(filepath, dpi=100)
+        filepath = "%s_%d.png" % (figname, fnum)
+
+    log.info("saving results image \"%s\"" % filepath)
+    # TODO to find a propre dpi
+    plt.savefig(filepath, dpi=150)
 
     if show:
         plt.show()
@@ -280,12 +324,6 @@ if __name__ == "__main__":
         log.error("file \"%s\" doesn't exist" % options.bench)
         sys.exit()
 
-    if not options.branch in REPO.heads:
-        log.error(
-            "branch \"%s\" is not in the repo \"%s\"" %
-            (options.branch, options.url))
-        sys.exit()
-
     # pick the selected commits
     commits = get_commits(options)
 
@@ -293,8 +331,11 @@ if __name__ == "__main__":
     results = OrderedDict()
 
     begin_run = time()
+    debug_count = 1
     for commit in commits:
         # compile
+        log.info("[commit %d]" % debug_count)
+        debug_count += 1
         compile_time = compile_bench_for_commit(
             options.bench, commit, options.url, quiet=options.quiet)
 
@@ -308,7 +349,7 @@ if __name__ == "__main__":
                 stmt="\n".join(options.statement), setup=options.setup)
             records = t.repeat(repeat=options.repeat, number=options.n)
             best_time = min(records)
-            log.info("**{} loops, best of {}: {} usec per loop".format(
+            log.info("**{} loops, best of {}: {} seconds per loop".format(
                 options.n, options.repeat, best_time))
             # log the results
             tmp_result = OrderedDict({
@@ -327,10 +368,12 @@ if __name__ == "__main__":
 
     log.info("plotting results")
     basename = os.path.basename(options.bench)
-    figname = "%s_%s" % (basename[:-3], options.branch)
+    filename = "%s_%s" % (basename[:-3], options.branch)
+    filename = re.sub(r"/", "_", filename)
+    build_reports(results, filename)
     # TODO also plot the compile time
-    plot_results(results, figname, show=options.show)
-    # TODO build reports
+    # TODO add scale option
+    plot_results(results, filename, show=options.show)
 
     print "================================ \
 finished in %.3f secs ================================" % (end_run - begin_run)
