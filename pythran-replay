@@ -107,7 +107,6 @@ def compile_bench_for_commit(bench, commit, url=".", quiet=False):
         return toc - tic
 
     REPO.git.checkout(commit)
-    log.info("current commit: " + REPO.head.commit.__str__())
     script = "python %s/scripts/pythran %s" % (url, bench)
     try:
         compile_time = compile_once(script)
@@ -126,7 +125,7 @@ def clean_workspace():
     os.system("rm -f *.so")
 
 
-def build_reports(results, filename="report"):
+def build_reports(options, results, total_time, filename="report"):
     """
     need each commit message
     """
@@ -134,15 +133,62 @@ def build_reports(results, filename="report"):
     fnum = 0
     while os.path.exists(filepath):
         fnum += 1
-        filepath = "%s_(%d).log" % (filename, fnum)
+        filepath = "%s_%d.log" % (filename, fnum)
     log.info("Building reports \"%s\"" % filepath)
 
     f = file(filepath, "w")
 
+    # get step, get begin commit
+    if options.count_range:
+        selects = options.count_range.split(":")
+        step = selects[2]
+        begin_commit = selects[0]
+    else:
+        selects = options.range.split(":")
+        begin_commit = selects[0]
+        if len(selects) == 3:
+            step = selects[2]
+        else:
+            step = 1
+
+    # write basic info:
+    f.write(
+        """##
+#
+# Date: %s
+#
+# [REPO INFORMATION]
+#     url: %s
+#     branch: %s
+#
+# [BENCHMARK]
+#     benchmark: %s
+#     setup: %s
+#     statement: %s
+#
+# [COMMITS SELECTED]
+#     start commit: %s
+#     step: %s
+#
+# [RESULTS]
+#     total : %d
+#     passed: %d
+#     finished in: %.2f seconds
+##
+""" % (
+        strftime("%X, %x, %Z", localtime()),
+        options.url, options.branch,
+        options.bench, options.setup, ";".join(options.statement),
+        begin_commit, step,
+        sum(1 for commit in get_commits(options)),
+        len(results), total_time))
+
+    # write results
     count = 1
     for commit, result in results.items():
         f.write(
             """
+
 [commit %d] %s
     Compile time: %s
     Best time: %s
@@ -150,7 +196,7 @@ def build_reports(results, filename="report"):
     Authored date: %s
     message: %s
 
-            """ % (
+""" % (
             count, commit.hexsha,
             result['compile_time'],
             result['best_time'],
@@ -167,9 +213,10 @@ def plot_results(results, figname, show=True, scale=None):
     results is an OrderedDict
     x: commit_date
     y: best_time
+    y2: compile_time
     """
 
-    commits_time = []
+    compile_times = []
     execute_times = []
     xcnts = []
     cnt = 0
@@ -178,24 +225,31 @@ def plot_results(results, figname, show=True, scale=None):
         cnt += 1
         xcnts.append(cnt)
         execute_times.append(result['best_time'])
-
-    plt.xlabel("Commit")
-    reversed_xcnts = range(len(xcnts) + 1)[1:]
-    reversed_xcnts.reverse()
-    plt.xticks(xcnts, reversed_xcnts)
-    plt.ylabel("Best execute time")
-    plt.title("Commits Performance History")
+        compile_times.append(result['compile_time'])
 
     # TODO users may choose the scale of Y axis
-    plt.plot(xcnts, execute_times, '--r*', label="$master$")
+    plt.title("Commits Performance History")
+    #compile_ax configure
+    plt.subplot(211)
+    # TODO How to present only integer on x axis?
+    plt.plot(xcnts, compile_times, '--r*')
+    plt.ylabel("Compile time")
+    plt.grid(True)
+    up = max(compile_times) + 2
+    down = min(compile_times) - 2
+    plt.ylim([down, up])
+    plt.xlim([0, xcnts[-1] + 1])
 
-    if scale:
-        plt.ylim(scale)
-    else:
-        up = max(execute_times) + 0.1
-        down = min(execute_times) - 0.1
-        plt.ylim([down, up])
-
+    # TODO How to share the same axis?
+    #execute_ax configure
+    plt.subplot(212)
+    plt.plot(xcnts, execute_times, '--b*')
+    plt.ylabel("Best execute time")
+    plt.xlabel("Commit")
+    plt.grid(True)
+    up = max(execute_times) + 0.05
+    down = min(execute_times) - 0.05
+    plt.ylim([down, up])
     plt.xlim([0, xcnts[-1] + 1])
 
     filepath = "%s.png" % (figname)
@@ -204,7 +258,7 @@ def plot_results(results, figname, show=True, scale=None):
         fnum += 1
         filepath = "%s_%d.png" % (figname, fnum)
 
-    log.info("saving results image \"%s\"" % filepath)
+    log.info("Saving results image \"%s\"" % filepath)
     # TODO to find a propre dpi
     plt.savefig(filepath, dpi=150)
 
@@ -324,33 +378,36 @@ if __name__ == "__main__":
         log.error("file \"%s\" doesn't exist" % options.bench)
         sys.exit()
 
+    commits = get_commits(options)
+    num_commits = sum(1 for commit in commits)
     # pick the selected commits
     commits = get_commits(options)
+    results = OrderedDict()
+    commit_count = 1
 
     clean_workspace()
-    results = OrderedDict()
-
     begin_run = time()
-    debug_count = 1
     for commit in commits:
         # compile
-        log.info("[commit %d]" % debug_count)
-        debug_count += 1
+        log.info(
+            "[commit %d / %d] %s" %
+            (commit_count, num_commits, commit.__str__()))
+        commit_count += 1
         compile_time = compile_bench_for_commit(
             options.bench, commit, options.url, quiet=options.quiet)
 
         if compile_time == -1:
             continue
 
-        log.info("**compiled time: %.3f" % compile_time)
+        log.info("**compiled time: %.3f seconds" % compile_time)
 
         try:
             t = timeit.Timer(
                 stmt="\n".join(options.statement), setup=options.setup)
             records = t.repeat(repeat=options.repeat, number=options.n)
             best_time = min(records)
-            log.info("**{} loops, best of {}: {} seconds per loop".format(
-                options.n, options.repeat, best_time))
+            log.info("**%d loops, best of %d: %.4f seconds per loop" %
+                    (options.n, options.repeat, best_time))
             # log the results
             tmp_result = OrderedDict({
                 "compile_time": compile_time,
@@ -365,15 +422,13 @@ if __name__ == "__main__":
 
         clean_workspace()
     end_run = time()
+    total_time = end_run - begin_run
 
-    log.info("plotting results")
+    log.info("Plotting results")
     basename = os.path.basename(options.bench)
     filename = "%s_%s" % (basename[:-3], options.branch)
     filename = re.sub(r"/", "_", filename)
-    build_reports(results, filename)
-    # TODO also plot the compile time
+    build_reports(options, results, total_time, filename)
     # TODO add scale option
     plot_results(results, filename, show=options.show)
-
-    print "================================ \
-finished in %.3f secs ================================" % (end_run - begin_run)
+    log.info("finished in %3f seconds" % total_time)
