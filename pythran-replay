@@ -404,6 +404,7 @@ if __name__ == "__main__":
         try:
             t = timeit.Timer(
                 stmt="\n".join(options.statement), setup=options.setup)
+            # FIXME timers perhaps share same import!
             records = t.repeat(repeat=options.repeat, number=options.n)
             best_time = min(records)
             log.info("**%d loops, best of %d: %.4f seconds per loop" %
