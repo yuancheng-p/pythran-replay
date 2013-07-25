@@ -19,6 +19,7 @@ import logging
 import matplotlib.pyplot as plt
 import commands
 import sys
+import numpy as np
 
 
 # log settings
@@ -102,27 +103,31 @@ def compile_bench_for_commit(bench, commit, url=".", quiet=False):
         tic = time()
         fail = commands.getstatusoutput(script)
         toc = time()
-        if fail != (0, ''):
+        if fail[0] != 0:
             raise Exception(fail[1])
+        elif fail[1] != '' and not quiet:
+            log.warn("\n%s" % fail[1])  # pythran's warning
         return toc - tic
 
     REPO.git.checkout(commit)
-    script = "python %s/scripts/pythran %s" % (url, bench)
+    # TODO pythran-replay config file
+    cppflags = "-I/home/yuancheng/Programming/\
+Git/pythran/build/temp.linux-i686-2.7/nt2/include"
+    script = "python %s/scripts/pythran %s %s" % (url, cppflags, bench)
     try:
         compile_time = compile_once(script)
     except Exception as e:
         error_type = type(e).__name__
         error_msg = str(e)
         log.error("**Failed to compile %s", bench)
-        # TODO it could be a pythran's compile warning
         if not quiet:
-            log.error("\n%s" % error_msg)
+            log.error("\n%s" % (error_msg))
         return -1
     return compile_time
 
 
 def clean_workspace():
-    os.system("rm -f *.so")
+    os.system("rm -f *.so parsetab.py")
 
 
 def build_reports(options, results, total_time, filename="report"):
@@ -170,6 +175,10 @@ def build_reports(options, results, total_time, filename="report"):
 #     start commit: %s
 #     step: %s
 #
+# [TIMEIT]
+#     number: %d
+#     repeat: %d
+#
 # [RESULTS]
 #     total : %d
 #     passed: %d
@@ -179,7 +188,7 @@ def build_reports(options, results, total_time, filename="report"):
         strftime("%X, %x, %Z", localtime()),
         options.url, options.branch,
         options.bench, options.setup, ";".join(options.statement),
-        begin_commit, step,
+        begin_commit, step, options.number, options.repeat,
         sum(1 for commit in get_commits(options)),
         len(results), total_time))
 
@@ -192,6 +201,9 @@ def build_reports(options, results, total_time, filename="report"):
 [commit %d] %s
     Compile time: %s
     Best time: %s
+    Worst time: %s
+    Mean time: %s
+    Median time: %s
     Author: %s
     Authored date: %s
     message: %s
@@ -199,39 +211,42 @@ def build_reports(options, results, total_time, filename="report"):
 """ % (
             count, commit.hexsha,
             result['compile_time'],
-            result['best_time'],
+            result['best_time'], result['worst_time'],
+            result['mean_time'], result['median_time'],
             commit.author.name.encode("utf8"),
             strftime("%X, %x, %Z", localtime(commit.authored_date)),
             commit.message.encode("utf8")))
         count += 1
 
     f.close()
+    return filepath
 
 
-def plot_results(results, figname, show=True, scale=None):
+def plot_results(results, show=True, scale=None, title=None):
     """
     results is an OrderedDict
-    x: commit_date
-    y: best_time
-    y2: compile_time
     """
-
     compile_times = []
-    execute_times = []
+    best_times = []
+    mean_times = []
+    worst_times = []
+    median_times = []
     xcnts = []
     cnt = 0
 
     for commit, result in results.items():
         cnt += 1
         xcnts.append(cnt)
-        execute_times.append(result['best_time'])
+        best_times.append(result['best_time'])
+        mean_times.append(result['mean_time'])
+        worst_times.append(result['worst_time'])
+        median_times.append(result['median_time'])
         compile_times.append(result['compile_time'])
 
-    # TODO users may choose the scale of Y axis
-    plt.title("Commits Performance History")
     #compile_ax configure
+    plt.suptitle(title) if title else plt.suptitle("Commits History")
+
     plt.subplot(211)
-    # TODO How to present only integer on x axis?
     plt.plot(xcnts, compile_times, '--r*')
     plt.ylabel("Compile time")
     plt.grid(True)
@@ -240,29 +255,20 @@ def plot_results(results, figname, show=True, scale=None):
     plt.ylim([down, up])
     plt.xlim([0, xcnts[-1] + 1])
 
-    # TODO How to share the same axis?
     #execute_ax configure
     plt.subplot(212)
-    plt.plot(xcnts, execute_times, '--b*')
-    plt.ylabel("Best execute time")
+    plt.plot(xcnts, best_times, '--g*', label='$BestTime$')
+    plt.plot(xcnts, worst_times, '--r*', label='$WorstTime$')
+    plt.plot(xcnts, mean_times, '--yo', label='$MeanTime$')
+    plt.plot(xcnts, median_times, '--bo', label='$MedianTime$')
+    plt.ylabel("Execute time")
     plt.xlabel("Commit")
+    plt.legend()
     plt.grid(True)
-    up = max(execute_times) + 0.05
-    down = min(execute_times) - 0.05
-    plt.ylim([down, up])
     plt.xlim([0, xcnts[-1] + 1])
 
-    filepath = "%s.png" % (figname)
-    fnum = 0
-    while os.path.exists(filepath):
-        fnum += 1
-        filepath = "%s_%d.png" % (figname, fnum)
-
-    log.info("Saving results image \"%s\"" % filepath)
-    # TODO to find a propre dpi
-    plt.savefig(filepath, dpi=150)
-
     if show:
+        log.info("show results")
         plt.show()
 
 
@@ -287,7 +293,7 @@ def parse_args(args):
         "-s", "--setup", default="pass",
         help="statement to be executed once initially, by defaut pass")
     parser.add_argument(
-        "-n", type=int, default=100,
+        "-n", "--number", type=int, default=100,
         help="how many times to execute 'statement', by default 100")
     parser.add_argument(
         "-r", "--repeat", type=int, default=3,
@@ -359,19 +365,6 @@ if __name__ == "__main__":
     options = parse_args(sys.argv[1:])
     global REPO
 
-    """ in the options:
-    *bench:      pythran file path
-    *statement:  statement to time
-     setup:      statement to be executed once initially
-     n:          how many times to execute 'statement'
-     repeat:     number of experiments
-     range:      r0[:r1[:step]]
-     count_range:Starting commit_id and number of commits r0:N:step.
-     show:       show plot figure after execution
-     url:        pythran repository path
-     quiet:      do not print pythran error msg
-    """
-
     REPO = git.Repo(options.url)
 
     if not os.path.exists(options.bench):
@@ -404,15 +397,20 @@ if __name__ == "__main__":
         try:
             t = timeit.Timer(
                 stmt="\n".join(options.statement), setup=options.setup)
-            # FIXME timers perhaps share same import!
-            records = t.repeat(repeat=options.repeat, number=options.n)
+            records = t.repeat(repeat=options.repeat, number=options.number)
             best_time = min(records)
-            log.info("**%d loops, best of %d: %.4f seconds per loop" %
-                    (options.n, options.repeat, best_time))
+            worst_time = max(records)
+            median_time = np.median(records)
+            mean_time = np.mean(records)
+            log.info("**%d loops, median of %d: %.4f seconds" %
+                    (options.number, options.repeat, median_time))
             # log the results
             tmp_result = OrderedDict({
                 "compile_time": compile_time,
-                "best_time": best_time})
+                "best_time": best_time,
+                "worst_time": worst_time,
+                "median_time": median_time,
+                "mean_time": mean_time})
             results[commit] = tmp_result
         except Exception:
             log.warn(
@@ -425,11 +423,10 @@ if __name__ == "__main__":
     end_run = time()
     total_time = end_run - begin_run
 
-    log.info("Plotting results")
     basename = os.path.basename(options.bench)
     filename = "%s_%s" % (basename[:-3], options.branch)
     filename = re.sub(r"/", "_", filename)
-    build_reports(options, results, total_time, filename)
-    # TODO add scale option
-    plot_results(results, filename, show=options.show)
+    if results != {}:
+        filepath = build_reports(options, results, total_time, filename)
+        plot_results(results, show=options.show, title=filepath[:-4])
     log.info("finished in %3f seconds" % total_time)

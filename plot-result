@@ -11,14 +11,15 @@ except:
 
 
 def get_results(filepath):
-    results = OrderedDict()
     f = file(filepath, "r")
 
+    results = OrderedDict()
     commit_pattern = "\[commit [0-9]+\][.]*"
     commit_id_pattern = "[0-9a-zA-Z]{40,40}"
-    
+    time_pattern = "[0-9]+\.[0-9]+"
+
     commits = []
-    # read commits 
+    # read commits
     for line in f:
         if re.match(commit_pattern, line):
             tmp_result = OrderedDict()
@@ -26,55 +27,51 @@ def get_results(filepath):
             commits.append(commit)
             results[commit] = tmp_result
 
-    # read Compile time
-    compile_pattern = ".*Compile time.*"
-    time_pattern = "[0-9]+\.[0-9]+"
-    f.seek(0)
-    cnt = 0
-    for line in f:
-        if re.match(compile_pattern, line):
-            compile_time = re.findall(time_pattern, line)[0]
-            results[commits[cnt]]['compile_time'] = float(compile_time)
-            cnt += 1
+    def read_time(pattern, key):
+        f.seek(0)
+        cnt = 0
+        for line in f:
+            if re.match(pattern, line):
+                t = re.findall(time_pattern, line)[0]
+                results[commits[cnt]][key] = float(t)
+                cnt += 1
 
-    # read Best time
-    best_time_pattern = ".*Best time.*"
-    f.seek(0)
-    cnt = 0
-    for line in f:
-        if re.match(best_time_pattern, line):
-            best_time = re.findall(time_pattern, line)[0]
-            results[commits[cnt]]['best_time'] = float(best_time)
-            cnt += 1
+    read_time(".*Compile time.*", 'compile_time')
+    read_time(".*Best time.*", 'best_time')
+    read_time(".*Worst time.*", 'worst_time')
+    read_time(".*Mean time.*", 'mean_time')
+    read_time(".*Median time.*", 'median_time')
 
     f.close()
     return results
 
 
-def plot_results(results, show=True, scale=None):
+def plot_results(
+        results, show=True, scale=None, title=None,
+        no_worst=False, no_mean=False, no_median=False, no_best=False):
     """
-    results is an OrderedDict
-    x: commit_date
-    y: best_time
-    y2: compile_time
     """
-
+    # TODO kwargs
     compile_times = []
-    execute_times = []
+    best_times = []
+    mean_times = []
+    worst_times = []
+    median_times = []
     xcnts = []
     cnt = 0
 
     for commit, result in results.items():
         cnt += 1
         xcnts.append(cnt)
-        execute_times.append(result['best_time'])
+        best_times.append(result['best_time'])
+        mean_times.append(result['mean_time'])
+        worst_times.append(result['worst_time'])
+        median_times.append(result['median_time'])
         compile_times.append(result['compile_time'])
 
-    # TODO users may choose the scale of Y axis
-    plt.title("Commits Performance History")
+    plt.suptitle(title) if title else plt.suptitle("Commits History")
     #compile_ax configure
     plt.subplot(211)
-    # TODO How to present only integer on x axis?
     plt.plot(xcnts, compile_times, '--r*')
     plt.ylabel("Compile time")
     plt.grid(True)
@@ -83,26 +80,33 @@ def plot_results(results, show=True, scale=None):
     plt.ylim([down, up])
     plt.xlim([0, xcnts[-1] + 1])
 
-    # TODO How to share the same axis?
     #execute_ax configure
     plt.subplot(212)
-    plt.plot(xcnts, execute_times, '--b*')
-    plt.ylabel("Best execute time")
+    if not no_best:
+        plt.plot(xcnts, best_times, '--g*', label='$BestTime$')
+    if not no_worst:
+        plt.plot(xcnts, worst_times, '--r*', label='$WorstTime$')
+    if not no_mean:
+        plt.plot(xcnts, mean_times, '--yo', label='$MeanTime$')
+    if not no_median:
+        plt.plot(xcnts, median_times, '--bo', label='$MedianTime$')
+    plt.ylabel("Execute time")
     plt.xlabel("Commit")
+    plt.legend()
     plt.grid(True)
-    up = max(execute_times) + 0.05
-    down = min(execute_times) - 0.05
-    plt.ylim([down, up])
     plt.xlim([0, xcnts[-1] + 1])
 
     if show:
         plt.show()
 
 
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Plot results")
     parser.add_argument("logfile")
+    parser.add_argument("--no_worst", action="store_true")
+    parser.add_argument("--no_best", action="store_true")
+    parser.add_argument("--no_mean", action="store_true")
+    parser.add_argument("--no_median", action="store_true")
     return parser.parse_args()
 
 
@@ -110,13 +114,17 @@ def main():
     options = parse_args()
 
     if not os.path.exists(options.logfile):
-        print "%s doesn't exist!" % logfile 
+        print "%s doesn't exist!" % logfile
         sys.exit()
 
     results = get_results(options.logfile)
-    plot_results(results)
+    plot_results(
+        results, title=options.logfile[:-4],
+        no_worst=options.no_worst,
+        no_mean=options.no_mean,
+        no_median=options.no_median,
+        no_best=options.no_best)
 
 
 if __name__ == "__main__":
     main()
-
