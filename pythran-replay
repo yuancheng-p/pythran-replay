@@ -22,6 +22,7 @@ import sys
 import numpy as np
 import ConfigParser
 import re
+from multiprocessing import Process, Pipe
 
 # log settings
 log = logging.getLogger(__name__)
@@ -329,6 +330,22 @@ def get_commits(options):
     return commits
 
 
+def repeat_bench(conn, options):
+    try:
+        t = timeit.Timer(
+            stmt="\n".join(options.statement), setup=options.setup)
+        records = t.repeat(repeat=options.repeat, number=options.number)
+        conn.send(records)
+    except Exception as e:
+        error_type = type(e).__name__
+        error_msg = str(e)
+        log.error("\n%s" % (error_msg))
+        conn.send(None)
+    finally:
+        conn.close()
+
+
+
 if __name__ == "__main__":
 
     options = parse_args(sys.argv[1:])
@@ -362,9 +379,14 @@ if __name__ == "__main__":
         log.info("**compile time: %.3f seconds" % compile_time)
 
         try:
-            t = timeit.Timer(
-                stmt="\n".join(options.statement), setup=options.setup)
-            records = t.repeat(repeat=options.repeat, number=options.number)
+            parent_conn, child_conn = Pipe()
+            p = Process(target=repeat_bench, args=(child_conn,options))
+            p.start()
+            records = parent_conn.recv()
+            p.join()
+            if not records:
+                continue
+
             best_time = min(records)
             worst_time = max(records)
             median_time = np.median(records)
@@ -375,12 +397,15 @@ if __name__ == "__main__":
                 "compile_time": compile_time, "best_time": best_time,
                 "worst_time": worst_time, "median_time": median_time,
                 "mean_time": mean_time})
-        except Exception:
+        except Exception as e:
+            error_type = type(e).__name__
+            error_msg = str(e)
             log.warn(
                 "\nOccurred an error in the timeit module which " +
                 "might continue happening in the following commits! " +
                 "<Ctrl + C> to stop running")
-            t.print_exc()
+            log.error("\n%s" % (error_msg))
+            #t.print_exc()
         clean_workspace()
     end_run = time()
 
