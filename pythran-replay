@@ -20,7 +20,8 @@ import matplotlib.pyplot as plt
 import commands
 import sys
 import numpy as np
-
+import ConfigParser
+import re
 
 # log settings
 log = logging.getLogger(__name__)
@@ -28,30 +29,35 @@ log.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
-    '%(asctime)s\t%(levelname)s:  %(message)s', '%m/%d/%Y %H:%M:%S')
+    '%(levelname)s:  %(message)s')
 ch.setFormatter(formatter)
 log.addHandler(ch)
+
+# read config
+config = ConfigParser.RawConfigParser()
+if not os.path.exists('.replay-config'):
+    log.error('.replay-config not found!')
+    exit()
+config.read('.replay-config')
 
 
 def verify_commit(branch, commit):
     commits = REPO.iter_commits(branch)
+
     for current in commits:
-        if current.__str__() == commit:
-            return True
-    log.error(
-        "commit \"%s\" is not in the branch \"%s\"" %
-        (commit, branch))
+        return current.__str__() == commit
+
+    log.error("commit \"%s\" is not in the branch \"%s\"" % (commit, branch))
     sys.exit()
 
 
 def iter_count_commits(branch, begin, count=1, step=1):
     """ Iterate commits with a begin commit
 
-    count is the number of commits returned
-    step is the distance between two commits
+    count is the number of commits selected
+    step is the distance between two commits to compile
     """
     verify_commit(branch, begin)
-
     commits = REPO.iter_commits(branch)
     cnt = 0
     already_begin = False
@@ -59,7 +65,6 @@ def iter_count_commits(branch, begin, count=1, step=1):
     for commit in commits:
         if cnt == count:
             break
-
         if commit.__str__() == begin or already_begin:
             if not already_begin:
                 already_begin = True
@@ -75,7 +80,6 @@ def iter_commits(branch, begin, end, step=1):
     """
     verify_commit(branch, begin)
     verify_commit(branch, end)
-
     commits = REPO.iter_commits(branch)
     cnt = 0
     already_begin = False
@@ -83,7 +87,6 @@ def iter_commits(branch, begin, end, step=1):
     for commit in commits:
         if commit.__str__() == end:
             break
-
         if commit.__str__() == begin or already_begin:
             if not already_begin:
                 already_begin = True
@@ -93,11 +96,10 @@ def iter_commits(branch, begin, end, step=1):
 
 
 def compile_bench_for_commit(bench, commit, url=".", quiet=False):
-    """comile a bench for a pythran commit
+    """Comile a benchmark for a pythran commit
 
-    the bench is the **pythran file path**
-    return: * compile time
-            * -1 if compile failed
+    The benchmark is a **pythran file path**
+    return the compile time or -1 if compile failed
     """
     def compile_once(script):
         tic = time()
@@ -106,13 +108,11 @@ def compile_bench_for_commit(bench, commit, url=".", quiet=False):
         if fail[0] != 0:
             raise Exception(fail[1])
         elif fail[1] != '' and not quiet:
-            log.warn("\n%s" % fail[1])  # pythran's warning
+            log.warn("Pythran warning\n%s" % fail[1])
         return toc - tic
 
     REPO.git.checkout(commit)
-    # TODO pythran-replay config file
-    cppflags = "-I/home/yuancheng/Programming/\
-Git/pythran/build/temp.linux-i686-2.7/nt2/include"
+    cppflags = config.get('user', 'cppflags')
     script = "python %s/scripts/pythran %s %s" % (url, cppflags, bench)
     try:
         compile_time = compile_once(script)
@@ -127,13 +127,10 @@ Git/pythran/build/temp.linux-i686-2.7/nt2/include"
 
 
 def clean_workspace():
-    os.system("rm -f *.so parsetab.py")
+    os.system("rm -f *.so parsetab.py a.out")
 
 
 def build_reports(options, results, total_time, filename="report"):
-    """
-    need each commit message
-    """
     filepath = "%s.log" % (filename)
     fnum = 0
     while os.path.exists(filepath):
@@ -143,7 +140,7 @@ def build_reports(options, results, total_time, filename="report"):
 
     f = file(filepath, "w")
 
-    # get step, get begin commit
+    # get begin commit and step
     if options.count_range:
         selects = options.count_range.split(":")
         step = selects[2]
@@ -151,10 +148,7 @@ def build_reports(options, results, total_time, filename="report"):
     else:
         selects = options.range.split(":")
         begin_commit = selects[0]
-        if len(selects) == 3:
-            step = selects[2]
-        else:
-            step = 1
+        step = selects[2] if len(selects) == 3 else 1
 
     # write basic info:
     f.write(
@@ -185,8 +179,7 @@ def build_reports(options, results, total_time, filename="report"):
 #     finished in: %.2f seconds
 ##
 """ % (
-        strftime("%X, %x, %Z", localtime()),
-        options.url, options.branch,
+        strftime("%X, %x, %Z", localtime()), options.url, options.branch,
         options.bench, options.setup, ";".join(options.statement),
         begin_commit, step, options.number, options.repeat,
         sum(1 for commit in get_commits(options)),
@@ -209,8 +202,7 @@ def build_reports(options, results, total_time, filename="report"):
     message: %s
 
 """ % (
-            count, commit.hexsha,
-            result['compile_time'],
+            count, commit.hexsha, result['compile_time'],
             result['best_time'], result['worst_time'],
             result['mean_time'], result['median_time'],
             commit.author.name.encode("utf8"),
@@ -222,10 +214,8 @@ def build_reports(options, results, total_time, filename="report"):
     return filepath
 
 
-def plot_results(results, show=True, scale=None, title=None):
-    """
-    results is an OrderedDict
-    """
+def plot_results(results, title=None, scale=None, ):
+    """plot and show figure"""
     compile_times = []
     best_times = []
     mean_times = []
@@ -243,9 +233,8 @@ def plot_results(results, show=True, scale=None, title=None):
         median_times.append(result['median_time'])
         compile_times.append(result['compile_time'])
 
-    #compile_ax configure
     plt.suptitle(title) if title else plt.suptitle("Commits History")
-
+    #compile_ax configure
     plt.subplot(211)
     plt.plot(xcnts, compile_times, '--r*')
     plt.ylabel("Compile time")
@@ -254,7 +243,6 @@ def plot_results(results, show=True, scale=None, title=None):
     down = min(compile_times) - 2
     plt.ylim([down, up])
     plt.xlim([0, xcnts[-1] + 1])
-
     #execute_ax configure
     plt.subplot(212)
     plt.plot(xcnts, best_times, '--g*', label='$BestTime$')
@@ -266,29 +254,17 @@ def plot_results(results, show=True, scale=None, title=None):
     plt.legend()
     plt.grid(True)
     plt.xlim([0, xcnts[-1] + 1])
-
-    if show:
-        log.info("show results")
-        plt.show()
+    plt.show()
 
 
 def parse_args(args):
-    """
-    """
-    parser = argparse.ArgumentParser(
-        description="Pythran Commits Replay Tool")
-    # positional
+    parser = argparse.ArgumentParser(description="Pythran Commits Replay Tool")
+
+    # positional args
     parser.add_argument("bench", type=str, help="Pythran declared python file")
     parser.add_argument("statement", type=str, nargs="+", help="")
 
-    try:
-        import argcomplete
-        argcomplete.autocomplete(parser)
-    except:
-        log.warn("argcomplete not found")
-
-    # optional
-    # TODO setup can be a python file ?
+    # optional args
     parser.add_argument(
         "-s", "--setup", default="pass",
         help="statement to be executed once initially, by defaut pass")
@@ -299,8 +275,7 @@ def parse_args(args):
         "-r", "--repeat", type=int, default=3,
         help="how many times repeat the experiment, by default 3")
     parser.add_argument(
-        "--url", type=str, default=".",
-        help="pythran repository path")
+        "--url", type=str, default=".", help="pythran repository path")
     parser.add_argument(
         "-b", "--branch", default='master',
         help="git branch, by default master")
@@ -314,8 +289,7 @@ def parse_args(args):
     # commits selection
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
-        "--range", default=None,
-        help="r0[:rn[:step]]")
+        "--range", default=None, help="r0[:rn[:step]]")
     group.add_argument(
         "--count_range", default=None,
         help="starting commit_id and number of commits r_0:n:step.")
@@ -331,13 +305,9 @@ def get_commits(options):
             sys.exit()
         selects = options.range.split(":")
         if len(selects) == 1:
-            commits = iter_count_commits(
-                options.branch,
-                selects[0], 1, 1)
+            commits = iter_count_commits(options.branch, selects[0], 1, 1)
         elif len(selects) == 2:
-            commits = iter_commits(
-                options.branch,
-                selects[0], selects[1], 1)
+            commits = iter_commits(options.branch, selects[0], selects[1], 1)
         elif len(selects) == 3:
             commits = iter_commits(
                 options.branch,
@@ -352,15 +322,14 @@ def get_commits(options):
             options.branch, cnt_rng[0],
             int(cnt_rng[1]), int(cnt_rng[2]))
     else:
-        log.info("No commits choosed, only the head commit will be run.")
         commits = iter_count_commits(
-            options.branch, REPO.heads[options.branch].commit.__str__(), 1, 1)
+            options.branch, REPO.heads[options.branch].commit.__str__(),
+            9999, 1)
 
     return commits
 
 
 if __name__ == "__main__":
-    import re
 
     options = parse_args(sys.argv[1:])
     global REPO
@@ -371,14 +340,12 @@ if __name__ == "__main__":
         log.error("file \"%s\" doesn't exist" % options.bench)
         sys.exit()
 
-    commits = get_commits(options)
-    num_commits = sum(1 for commit in commits)
-    # pick the selected commits
+    num_commits = sum(1 for commit in get_commits(options))
     commits = get_commits(options)
     results = OrderedDict()
     commit_count = 1
-
     clean_workspace()
+
     begin_run = time()
     for commit in commits:
         # compile
@@ -390,9 +357,9 @@ if __name__ == "__main__":
             options.bench, commit, options.url, quiet=options.quiet)
 
         if compile_time == -1:
-            continue
+            continue  # skip if fail to compile
 
-        log.info("**compiled time: %.3f seconds" % compile_time)
+        log.info("**compile time: %.3f seconds" % compile_time)
 
         try:
             t = timeit.Timer(
@@ -402,31 +369,27 @@ if __name__ == "__main__":
             worst_time = max(records)
             median_time = np.median(records)
             mean_time = np.mean(records)
-            log.info("**%d loops, median of %d: %.4f seconds" %
-                    (options.number, options.repeat, median_time))
-            # log the results
-            tmp_result = OrderedDict({
-                "compile_time": compile_time,
-                "best_time": best_time,
-                "worst_time": worst_time,
-                "median_time": median_time,
+            log.info("**%d loops, best of %d: %.6f seconds" %
+                    (options.number, options.repeat, best_time))
+            results[commit] = OrderedDict({
+                "compile_time": compile_time, "best_time": best_time,
+                "worst_time": worst_time, "median_time": median_time,
                 "mean_time": mean_time})
-            results[commit] = tmp_result
         except Exception:
             log.warn(
                 "\nOccurred an error in the timeit module which " +
                 "might continue happening in the following commits! " +
                 "<Ctrl + C> to stop running")
             t.print_exc()
-
         clean_workspace()
     end_run = time()
-    total_time = end_run - begin_run
 
+    total_time = end_run - begin_run
     basename = os.path.basename(options.bench)
     filename = "%s_%s" % (basename[:-3], options.branch)
     filename = re.sub(r"/", "_", filename)
     if results != {}:
         filepath = build_reports(options, results, total_time, filename)
-        plot_results(results, show=options.show, title=filepath[:-4])
+        if options.show:
+            plot_results(results, title=filepath[:-4])
     log.info("finished in %3f seconds" % total_time)
