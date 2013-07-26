@@ -10,6 +10,37 @@ except:
     from ordereddict import OrderedDict
 
 
+def get_basic_info(filepath):
+    f = file(filepath, "r")
+    basic_info = OrderedDict({
+        'url': '../pythran',
+        'branch': 'serge/master'})
+    return basic_info
+
+
+def patch_results(results, basic_info):
+    """Fill failed commits with NaN"""
+    import git
+    import numpy as np
+    repo = git.Repo(basic_info['url'])
+    commits = repo.iter_commits(basic_info['branch'])
+    p_results = OrderedDict()
+
+    for commit in commits:
+        if commit.__str__() in results.keys():
+            p_results[commit.__str__()] = results[commit.__str__()]
+            continue
+        else:
+            p_results[commit.__str__()] = OrderedDict({
+                "compile_time": np.nan,
+                "best_time": np.nan,
+                "worst_time": np.nan,
+                "median_time": np.nan,
+                "mean_time": np.nan})
+
+    return p_results
+
+
 def get_results(filepath):
     f = file(filepath, "r")
 
@@ -51,7 +82,6 @@ def plot_results(
         no_worst=False, no_mean=False, no_median=False, no_best=False):
     """
     """
-    # TODO kwargs
     compile_times = []
     best_times = []
     mean_times = []
@@ -103,6 +133,8 @@ def plot_results(
 def parse_args():
     parser = argparse.ArgumentParser(description="Plot results")
     parser.add_argument("logfile")
+    parser.add_argument(
+        "--abso", action="store_true", help="show commits' absolute position")
     parser.add_argument("--no_worst", action="store_true")
     parser.add_argument("--no_best", action="store_true")
     parser.add_argument("--no_mean", action="store_true")
@@ -118,6 +150,11 @@ def main():
         sys.exit()
 
     results = get_results(options.logfile)
+
+    if options.abso:
+        basic_info = get_basic_info(options.logfile)
+        results = patch_results(results, basic_info)
+
     plot_results(
         results, title=options.logfile[:-4],
         no_worst=options.no_worst,
