@@ -319,10 +319,13 @@ def get_commits(options):
             options.branch, cnt_rng[0],
             int(cnt_rng[1]), int(cnt_rng[2]))
     else:
-        # FIXME
-        commits = iter_count_commits(
-            options.branch, REPO.heads[options.branch].commit.__str__(),
-            9999, 1)
+        refs = [(ref.name,ref.commit) for ref in REPO.refs]
+        for name, commit in refs:
+            if name == options.branch:
+                # by defaut all commits on the branch
+                commits = iter_count_commits(
+                    options.branch, commit.__str__(), 9999, 1)
+                break
 
     return commits
 
