@@ -77,9 +77,7 @@ def get_results(filepath):
     return results
 
 
-def plot_results(
-        results, show=True, scale=None, title=None,
-        no_worst=False, no_mean=False, no_median=False, no_best=False):
+def plot_results(results, show=True, title=None):
     """
     """
     compile_times = []
@@ -112,17 +110,9 @@ def plot_results(
 
     #execute_ax configure
     plt.subplot(212)
-    if not no_best:
-        plt.plot(xcnts, best_times, '--g*', label='$BestTime$')
-    if not no_worst:
-        plt.plot(xcnts, worst_times, '--r*', label='$WorstTime$')
-    if not no_mean:
-        plt.plot(xcnts, mean_times, '--yo', label='$MeanTime$')
-    if not no_median:
-        plt.plot(xcnts, median_times, '--bo', label='$MedianTime$')
+    plt.plot(xcnts, best_times, '--g*', label='$BestTime$')
     plt.ylabel("Execute time")
     plt.xlabel("Commit")
-    plt.legend()
     plt.grid(True)
     plt.xlim([0, xcnts[-1] + 1])
 
@@ -134,11 +124,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Plot results")
     parser.add_argument("logfile")
     parser.add_argument(
-        "--abso", action="store_true", help="show commits' absolute position")
-    parser.add_argument("--no_worst", action="store_true")
-    parser.add_argument("--no_best", action="store_true")
-    parser.add_argument("--no_mean", action="store_true")
-    parser.add_argument("--no_median", action="store_true")
+        "--abs", action="store_true", help="show commits' absolute position")
     return parser.parse_args()
 
 
@@ -151,16 +137,11 @@ def main():
 
     results = get_results(options.logfile)
 
-    if options.abso:
+    if options.abs:
         basic_info = get_basic_info(options.logfile)
         results = patch_results(results, basic_info)
 
-    plot_results(
-        results, title=options.logfile[:-4],
-        no_worst=options.no_worst,
-        no_mean=options.no_mean,
-        no_median=options.no_median,
-        no_best=options.no_best)
+    plot_results(results, title=options.logfile[:-4])
 
 
 if __name__ == "__main__":

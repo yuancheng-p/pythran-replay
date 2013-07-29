@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 """
-./pythran-replay ./benchmark/dprod/dprod.py
-    -s 'from dprod import dprod;l0=[1]*100000;l1=[2]*100000'
-    'dprod(l0,l1)' --url ../pythran -b master -n 100
-    --count_rng cc9294c07bfcc46540223700a1bb951219dccabc:20:2
 """
 import argparse
 import imp
@@ -215,8 +211,9 @@ def build_reports(options, results, total_time, filename="report"):
     return filepath
 
 
-def plot_results(results, title=None, scale=None, ):
-    """plot and show figure"""
+def plot_results(results, show=True, title=None):
+    """
+    """
     compile_times = []
     best_times = []
     mean_times = []
@@ -244,18 +241,17 @@ def plot_results(results, title=None, scale=None, ):
     down = min(compile_times) - 2
     plt.ylim([down, up])
     plt.xlim([0, xcnts[-1] + 1])
+
     #execute_ax configure
     plt.subplot(212)
     plt.plot(xcnts, best_times, '--g*', label='$BestTime$')
-    plt.plot(xcnts, worst_times, '--r*', label='$WorstTime$')
-    plt.plot(xcnts, mean_times, '--yo', label='$MeanTime$')
-    plt.plot(xcnts, median_times, '--bo', label='$MedianTime$')
     plt.ylabel("Execute time")
     plt.xlabel("Commit")
-    plt.legend()
     plt.grid(True)
     plt.xlim([0, xcnts[-1] + 1])
-    plt.show()
+
+    if show:
+        plt.show()
 
 
 def parse_args(args):
@@ -323,6 +319,7 @@ def get_commits(options):
             options.branch, cnt_rng[0],
             int(cnt_rng[1]), int(cnt_rng[2]))
     else:
+        # FIXME
         commits = iter_count_commits(
             options.branch, REPO.heads[options.branch].commit.__str__(),
             9999, 1)
@@ -416,5 +413,5 @@ if __name__ == "__main__":
     if results != {}:
         filepath = build_reports(options, results, total_time, filename)
         if options.show:
-            plot_results(results, title=filepath[:-4])
+            plot_results(results, show=options.show, title=filepath[:-4])
     log.info("finished in %3f seconds" % total_time)
