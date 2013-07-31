@@ -1,7 +1,7 @@
-#pythran export float_sum_python(float [])
+#pythran export float_sum(float [])
 
 
-def float_sum_python(y):
+def float_sum(y):
     N = len(y)
     x = y[0]
     for i in xrange(1, N):
