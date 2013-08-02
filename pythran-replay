@@ -25,6 +25,7 @@ import logging
 import matplotlib.pyplot as plt
 import commands
 import sys
+import traceback
 import numpy as np
 import ConfigParser
 import re
@@ -329,7 +330,7 @@ def get_commits(options):
             options.branch, cnt_rng[0],
             int(cnt_rng[1]), int(cnt_rng[2]))
     else:
-        refs = [(ref.name,ref.commit) for ref in REPO.refs]
+        refs = [(ref.name, ref.commit) for ref in REPO.refs]
         for name, commit in refs:
             if name == options.branch:
                 # by defaut all commits on the branch
@@ -355,6 +356,45 @@ def repeat_bench(conn, options):
         conn.close()
 
 
+def save_workspace():
+    try:
+        head_branch_name = REPO.head.ref.name
+    except Exception as e:
+        head_branch_name = None
+
+    head_commit = REPO.head.commit
+
+    isstashed = False
+    if REPO.git.diff() or REPO.git.diff("--cached"):
+        REPO.git.stash()
+        log.info("Working space stashed")
+        isstashed = True
+
+    return OrderedDict({
+        "head_branch_name": head_branch_name,
+        "head_commit": head_commit,
+        "isstashed": isstashed})
+
+
+def restore_workspace(workspace):
+    log.info("Restoring working space")
+    if workspace["head_branch_name"]:
+        REPO.git.checkout(workspace["head_branch_name"])
+    else:
+        REPO.git.checkout(workspace["head_commit"])
+
+    if workspace["isstashed"]:
+        REPO.git.stash('pop')
+        log.info("Working space unstashed")
+        workspace["isstashed"] = False
+
+
+def abort(e, workspace):
+    log.warn("Aborting...")
+    restore_workspace(workspace)
+    traceback.print_exc()
+    exit(1)
+
 
 if __name__ == "__main__":
 
@@ -372,53 +412,57 @@ if __name__ == "__main__":
     results = OrderedDict()
     commit_count = 1
     clean_workspace()
+    workspace = save_workspace()
 
-    begin_run = time()
-    for commit in commits:
-        # compile
-        log.info(
-            "[commit %d / %d] %s" %
-            (commit_count, num_commits, commit.__str__()))
-        commit_count += 1
-        compile_time = compile_bench_for_commit(
-            options.bench, commit, options.url, quiet=options.quiet)
+    try:
+        begin_run = time()
+        for commit in commits:
+            # compile
+            log.info(
+                "[commit %d / %d] %s" %
+                (commit_count, num_commits, commit.__str__()))
+            commit_count += 1
+            compile_time = compile_bench_for_commit(
+                options.bench, commit, options.url, quiet=options.quiet)
 
-        if compile_time == -1:
-            continue  # skip if fail to compile
+            if compile_time == -1:
+                continue  # skip if fail to compile
 
-        log.info("**compile time: %.3f seconds" % compile_time)
+            log.info("**compile time: %.3f seconds" % compile_time)
 
-        try:
-            parent_conn, child_conn = Pipe()
-            p = Process(target=repeat_bench, args=(child_conn,options))
-            p.start()
-            records = parent_conn.recv()
-            p.join()
-            if not records:
-                continue
+            try:
+                parent_conn, child_conn = Pipe()
+                p = Process(target=repeat_bench, args=(child_conn, options))
+                p.start()
+                records = parent_conn.recv()
+                p.join()
+                if not records:
+                    continue
 
-            best_time = min(records)
-            worst_time = max(records)
-            median_time = np.median(records)
-            mean_time = np.mean(records)
-            log.info("**%d loops, best of %d: %.6f seconds" %
-                    (options.number, options.repeat, best_time))
-            results[commit] = OrderedDict({
-                "compile_time": compile_time, "best_time": best_time,
-                "worst_time": worst_time, "median_time": median_time,
-                "mean_time": mean_time})
-        except Exception as e:
-            error_type = type(e).__name__
-            error_msg = str(e)
-            log.warn(
-                "\nOccurred an error in the timeit module which " +
-                "might continue happening in the following commits! " +
-                "<Ctrl + C> to stop running")
-            log.error("\n%s" % (error_msg))
-            #t.print_exc()
-        clean_workspace()
-    end_run = time()
+                best_time = min(records)
+                worst_time = max(records)
+                median_time = np.median(records)
+                mean_time = np.mean(records)
+                log.info("**%d loops, best of %d: %.6f seconds" %
+                        (options.number, options.repeat, best_time))
+                results[commit] = OrderedDict({
+                    "compile_time": compile_time, "best_time": best_time,
+                    "worst_time": worst_time, "median_time": median_time,
+                    "mean_time": mean_time})
+            except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e)
+                log.warn(
+                    "\nOccurred an error in the timeit module which " +
+                    "might continue happening in the following commits! " +
+                    "<Ctrl + C> to stop running")
+                log.error("\n%s" % (error_msg))
+            clean_workspace()
+        end_run = time()
+    except KeyboardInterrupt as e:
+        abort(e, workspace)
 
+    restore_workspace(workspace)
     total_time = end_run - begin_run
     basename = os.path.basename(options.bench)
     filename = "%s_%s" % (basename[:-3], options.branch)
