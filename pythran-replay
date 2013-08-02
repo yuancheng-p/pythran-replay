@@ -402,6 +402,7 @@ if __name__ == "__main__":
     global REPO
 
     REPO = git.Repo(options.url)
+    os.environ['PYTHONPATH'] += ":%s" % os.path.abspath(options.url)
 
     if not os.path.exists(options.bench):
         log.error("file \"%s\" doesn't exist" % options.bench)
