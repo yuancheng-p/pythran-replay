@@ -43,12 +43,6 @@ Usage
 
         $> export PYTHONPATH=/path/to/pythran:$PYTHONPATH
 
-3. Ensure that there is no modification in your pythran repo, otherwise,
-   stash them. ::
-
-        $> cd /path/to/pythran
-        $> git stash
-
 
 **Typical usage**
 
@@ -110,8 +104,5 @@ by adding an option ``--show`` in your pythran-replay's command line.
 To be improved
 ==============
 * The ``--url`` and ``--branch`` might be able to be written into the ``.replay-config``.
-
-* pythran-replay should stash pythran changes before doing any thing in the pythran
-  repo and unstash at the end.
 
 * Search a solution to skip exporting PYTHONPATH.
