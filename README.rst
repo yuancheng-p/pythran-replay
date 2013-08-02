@@ -19,15 +19,15 @@ Usage
 -----
 **Preparation**
 
-*Dependencies*
+1. Dependencies
 
-* Pythran_
-* gitpython_
+        * Pythran_
+        * gitpython_
 
  .. _Pythran: https://github.com/serge-sans-paille/pythran
  .. _gitpython: https://github.com/gitpython-developers/GitPython
 
-1. You should firstly config your ``.replay-config`` in the same folder of
+2. You should firstly config your ``.replay-config`` in the same folder of
    pythran-replay. Replace the cppflags prefix with yours. ::
 
         `[user]
@@ -37,11 +37,6 @@ Usage
 
         `[user]
         `cppflags = "-I <prefix>/pythran/build/temp.linux-i686-2.7/nt2/include"
-
-
-2. Export the ``PYTHONPATH`` to your pythran git repo. ::
-
-        $> export PYTHONPATH=/path/to/pythran:$PYTHONPATH
 
 
 **Typical usage**
