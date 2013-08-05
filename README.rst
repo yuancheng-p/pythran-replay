@@ -27,7 +27,7 @@ Usage
  .. _Pythran: https://github.com/serge-sans-paille/pythran
  .. _gitpython: https://github.com/gitpython-developers/GitPython
 
-2. You should firstly config your ``.replay-config`` in the same folder of
+2. You should firstly configure your ``.replay-config`` in the same folder of
    pythran-replay. Replace the cppflags prefix with yours(no space after -I). ::
 
         `[user]
@@ -72,7 +72,6 @@ The easiest way to explain is to give some examples.
         $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url ../pythran -b master --range 6c16cfd26a0c4cb146c2ffa3b374cbfe6fd2cc97:8a2df0af49430098c55120bb5cb11f485e9b3eb5:2  -n 10 -r 21
 
 
-
 plot-result
 ===========
 Once the pythran-replay finished, you must be informed that a log file is
@@ -88,16 +87,23 @@ the dprod on your master branch, you should have a log file named
    For the detail of a certain commit, please checkout your log file.
 
 2. Your benchmark is probably not supported by many of the commits that you have
-selected. To see which of them have passed. ::
+   selected. To see which of them have passed. ::
 
-        $> ./plot-result dprod_master.log --abs
+        $> ./plot-result dprod_master.log --all
 
 3. Lastly, you can also simply plot the results after executing the pythran-replay
-by adding an option ``--show`` in your pythran-replay's command line.
+   by adding an option ``--show`` in your pythran-replay's command line.
+
+Advance
+-------
+To avoid typing ``--url`` and ``--branch`` all the time, you can write it as
+defaut into your ``.replay-config`` after the ``[user]`` section. ::
+
+        `[user]
+        `url = /path/to/pythran
+        `branch = <your-branch>
 
 
 To be improved
 ==============
-* The ``--url`` and ``--branch`` might be able to be written into the ``.replay-config``.
-
 * use distutils to help install dependencies
