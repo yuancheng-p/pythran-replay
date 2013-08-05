@@ -9,10 +9,26 @@ import re
 import matplotlib.pyplot as plt
 try:
     from collections import OrderedDict
-except:
-    # TODO type of exception, import error
+except ImportError:
     from ordereddict import OrderedDict
 import linecache
+import logging
+
+# logger setup
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(levelname)s:  %(message)s',
+                    datefmt='%m/%d/%Y %H:%M:%S',
+                    filename='.plot-result.err',
+                    filemode='w')
+
+console = logging.StreamHandler()
+console.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    '%(levelname)s:  %(message)s', '%m/%d/%Y %H:%M:%S')
+console.setFormatter(formatter)
+logging.getLogger('').addHandler(console)
+
+log = logging.getLogger(__name__)
 
 
 def get_basic_info(filepath):
@@ -47,38 +63,36 @@ def patch_results(results, basic_info):
 
 
 def get_results(filepath):
-    f = file(filepath, "r")
+    with open(filepath, "r") as f:
+        results = OrderedDict()
+        commit_pattern = "\[commit [0-9]+\][.]*"
+        commit_id_pattern = "[0-9a-zA-Z]{40,40}"
+        time_pattern = "[0-9]+\.[0-9]+"
 
-    results = OrderedDict()
-    commit_pattern = "\[commit [0-9]+\][.]*"
-    commit_id_pattern = "[0-9a-zA-Z]{40,40}"
-    time_pattern = "[0-9]+\.[0-9]+"
-
-    commits = []
-    # read commits
-    for line in f:
-        if re.match(commit_pattern, line):
-            tmp_result = OrderedDict()
-            commit = re.findall(commit_id_pattern, line)[0]
-            commits.append(commit)
-            results[commit] = tmp_result
-
-    def read_time(pattern, key):
-        f.seek(0)
-        cnt = 0
+        commits = []
+        # read commits
         for line in f:
-            if re.match(pattern, line):
-                t = re.findall(time_pattern, line)[0]
-                results[commits[cnt]][key] = float(t)
-                cnt += 1
+            if re.match(commit_pattern, line):
+                tmp_result = OrderedDict()
+                commit = re.findall(commit_id_pattern, line)[0]
+                commits.append(commit)
+                results[commit] = tmp_result
 
-    read_time(".*Compile time.*", 'compile_time')
-    read_time(".*Best time.*", 'best_time')
-    read_time(".*Worst time.*", 'worst_time')
-    read_time(".*Mean time.*", 'mean_time')
-    read_time(".*Median time.*", 'median_time')
+        def read_time(pattern, key):
+            f.seek(0)
+            cnt = 0
+            for line in f:
+                if re.match(pattern, line):
+                    t = re.findall(time_pattern, line)[0]
+                    results[commits[cnt]][key] = float(t)
+                    cnt += 1
 
-    f.close()
+        read_time(".*Compile time.*", 'compile_time')
+        read_time(".*Best time.*", 'best_time')
+        read_time(".*Worst time.*", 'worst_time')
+        read_time(".*Mean time.*", 'mean_time')
+        read_time(".*Median time.*", 'median_time')
+
     return results
 
 
@@ -108,9 +122,6 @@ def plot_results(results, show=True, title=None):
     plt.plot(xcnts, compile_times, '--r*')
     plt.ylabel("Compile time")
     plt.grid(True)
-    up = max(compile_times) + 2
-    down = min(compile_times) - 2
-    plt.ylim([down, up])
     plt.xlim([0, xcnts[-1] + 1])
 
     #execute_ax configure
@@ -137,8 +148,7 @@ def main():
     options = parse_args()
 
     if not os.path.exists(options.logfile):
-        # TODO add into log
-        print "%s doesn't exist!" % logfile
+        log.error("%s doesn't exist!" % logfile)
         sys.exit()
 
     results = get_results(options.logfile)
