@@ -28,15 +28,15 @@ Usage
  .. _gitpython: https://github.com/gitpython-developers/GitPython
 
 2. You should firstly config your ``.replay-config`` in the same folder of
-   pythran-replay. Replace the cppflags prefix with yours. ::
+   pythran-replay. Replace the cppflags prefix with yours(no space after -I). ::
 
         `[user]
-        `cppflags = "-I <prefix>/pythran/build/temp.linux-x86_64-2.7/nt2/include"
+        `cppflags = "-I<prefix>/pythran/build/temp.linux-x86_64-2.7/nt2/include"
 
    NB: If your machine is 32 bits, your cppflags should probably be: ::
 
         `[user]
-        `cppflags = "-I <prefix>/pythran/build/temp.linux-i686-2.7/nt2/include"
+        `cppflags = "-I<prefix>/pythran/build/temp.linux-i686-2.7/nt2/include"
 
 
 **Typical usage**
@@ -100,4 +100,4 @@ To be improved
 ==============
 * The ``--url`` and ``--branch`` might be able to be written into the ``.replay-config``.
 
-* Search a solution to skip exporting PYTHONPATH.
+* use distutils to help install dependencies
