@@ -140,7 +140,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Plot results")
     parser.add_argument("logfile")
     parser.add_argument(
-        "--abs", action="store_true", help="show commits' absolute position")
+        "--all", action="store_true", help="show all commits")
     return parser.parse_args()
 
 
@@ -153,7 +153,7 @@ def main():
 
     results = get_results(options.logfile)
 
-    if options.abs:
+    if options.all:
         basic_info = get_basic_info(options.logfile)
         results = patch_results(results, basic_info)
 
