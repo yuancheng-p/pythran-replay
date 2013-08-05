@@ -10,15 +10,17 @@ import matplotlib.pyplot as plt
 try:
     from collections import OrderedDict
 except:
+    # TODO type of exception, import error
     from ordereddict import OrderedDict
+import linecache
 
 
 def get_basic_info(filepath):
-    f = file(filepath, "r")
-    basic_info = OrderedDict({
-        'url': '../pythran',
-        'branch': 'serge/master'})
-    return basic_info
+    url = linecache.getline(filepath, 6).split(':')[1].strip()
+    branch = linecache.getline(filepath, 7).split(':')[1].strip()
+    return OrderedDict({
+        'url': url,
+        'branch': branch})
 
 
 def patch_results(results, basic_info):
@@ -135,6 +137,7 @@ def main():
     options = parse_args()
 
     if not os.path.exists(options.logfile):
+        # TODO add into log
         print "%s doesn't exist!" % logfile
         sys.exit()
 
