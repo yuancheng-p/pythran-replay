@@ -31,12 +31,12 @@ Usage
    pythran-replay. Replace the cppflags prefix with yours(no space after -I). ::
 
         `[user]
-        `cppflags = "-I<prefix>/pythran/build/temp.linux-x86_64-2.7/nt2/include"
+        `cppflags = -I<prefix>/pythran/build/temp.linux-x86_64-2.7/nt2/include
 
    NB: If your machine is 32 bits, your cppflags should probably be: ::
 
         `[user]
-        `cppflags = "-I<prefix>/pythran/build/temp.linux-i686-2.7/nt2/include"
+        `cppflags = -I<prefix>/pythran/build/temp.linux-i686-2.7/nt2/include
 
 
 **Typical usage**

@@ -33,10 +33,10 @@ from multiprocessing import Process, Pipe
 
 # log settings
 logging.basicConfig(level=logging.DEBUG,
-    format='%(asctime)s %(levelname)s:  %(message)s',
-    datefmt='%m/%d/%Y %H:%M:%S',
-    filename='.pythran-replay.log',
-    filemode='w')
+                    format='%(asctime)s %(levelname)s:  %(message)s',
+                    datefmt='%m/%d/%Y %H:%M:%S',
+                    filename='.pythran-replay.log',
+                    filemode='w')
 
 console = logging.StreamHandler()
 console.setLevel(logging.DEBUG)
@@ -144,7 +144,8 @@ def clean_workspace():
     os.system("rm -f *.so parsetab.py a.out")
 
 
-def build_reports(options, results, total_time, url, branch, filename="report"):
+def build_reports(options, results,
+                  total_time, url, branch, filename="report"):
     filepath = "%s.log" % (filename)
     fnum = 0
     while os.path.exists(filepath):
@@ -159,10 +160,17 @@ def build_reports(options, results, total_time, url, branch, filename="report"):
         selects = options.count_range.split(":")
         step = selects[2]
         begin_commit = selects[0]
-    else:
+    elif options.range:
         selects = options.range.split(":")
         begin_commit = selects[0]
         step = selects[2] if len(selects) == 3 else 1
+    else:
+        step = 1
+        refs = [(ref.name, ref.commit) for ref in REPO.refs]
+        for name, commit in refs:
+            if name == branch:
+                begin_commit = commit.__str__()
+                break
 
     # write basic info:
     f.write(
@@ -505,7 +513,8 @@ if __name__ == "__main__":
     filename = "%s_%s" % (basename[:-3], branch)
     filename = re.sub(r"/", "_", filename)
     if results != {}:
-        filepath = build_reports(options, results, total_time, url, branch, filename)
+        filepath = build_reports(options, results,
+                                 total_time, url, branch, filename)
         if options.show:
             plot_results(results, show=options.show, title=filepath[:-4])
     log.info("finished in %3f seconds" % total_time)
