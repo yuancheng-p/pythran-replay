@@ -15,19 +15,18 @@ improving the performance. Meanwhile, we can also easily find out
 if a commit has ever led to a worse performance.
 
 
-Usage
------
-**Preparation**
-
 Dependencies
+------------
 
-        * Pythran_
-        * gitpython_
+* Pythran_
+* gitpython_
 
  .. _Pythran: https://github.com/serge-sans-paille/pythran
  .. _gitpython: https://github.com/gitpython-developers/GitPython
 
 
+Usage
+-----
 **Typical usage**
 
 The easiest way to explain is to give some examples.
@@ -45,7 +44,7 @@ The easiest way to explain is to give some examples.
    it begin with this commit, and select 100 behind it. Then for every 10
    commit it compile once. ::
 
-        $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url /path/to/pythran-repo -b master --count_range 6c16cfd26a0c4cb146c2ffa3b374cbfe6fd2cc97:100 :10 -n 10 -r 21
+        $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url /path/to/pythran-repo -b master --count_range 6c16cfd26a0c4cb146c2ffa3b374cbfe6fd2cc97:100:10 -n 10 -r 21
 
    As you saw from the examples above, the interface looks like timeit_ module
    in python except that you have to specify the branch, the pythran path and
@@ -59,6 +58,29 @@ The easiest way to explain is to give some examples.
    Compile for every 2 commits::
 
         $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url /path/to/pythran -b master --range 6c16cfd26a0c4cb146c2ffa3b374cbfe6fd2cc97:8a2df0af49430098c55120bb5cb11f485e9b3eb5:2 -n 10 -r 21
+
+
+Configuration
+-------------
+
+Pythran-replay's configuration file is named ``.replay-config``.
+You can find it in the same folder of the scripts. Configuring this file may
+simplify your command line and may give more options!
+
+1. To avoid typing ``--url`` and ``--branch`` all the time, you can write it as
+   default into your ``.replay-config`` after the ``[user]`` section. ::
+
+        `[user]
+        `url = /path/to/pythran
+        `branch = <your-branch>
+
+2. Pythran has many other compile options, to add them as compile options
+   after the ``[user]`` section. ::
+
+        `[user]
+        `cppflags = <pythran-command-line-options>
+
+   For example: ``cppflags = -O2 -fopenmp``.
 
 
 plot-result
@@ -83,20 +105,9 @@ the dprod on your master branch, you should have a log file named
 3. Lastly, you can also simply plot the results after executing the pythran-replay
    by adding an option ``--show`` in your pythran-replay's command line.
 
-Advance
--------
-To avoid typing ``--url`` and ``--branch`` all the time, you can write it as
-defaut into your ``.replay-config`` after the ``[user]`` section. ::
-
-        `[user]
-        `url = /path/to/pythran
-        `branch = <your-branch>
-
 
 To be improved
 ==============
 * use distutils to help install dependencies.
 
 * In the plot-result, it is better to gather all information in one loop.
-
-* Add explanation for cppflags additionnal options
