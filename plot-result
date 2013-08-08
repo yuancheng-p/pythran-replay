@@ -18,7 +18,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s:  %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
-                    filename='.plot-result.err',
+                    filename='.plot-result.log',
                     filemode='w')
 
 console = logging.StreamHandler()
@@ -42,22 +42,22 @@ def get_basic_info(filepath):
 def patch_results(results, basic_info):
     """Fill failed commits with NaN"""
     import git
-    import numpy as np
     repo = git.Repo(basic_info['url'])
     commits = repo.iter_commits(basic_info['branch'])
     p_results = OrderedDict()
 
     for commit in commits:
-        if commit.__str__() in results.keys():
-            p_results[commit.__str__()] = results[commit.__str__()]
+        commit_id = str(commit)
+        if commit_id in results.keys():
+            p_results[commit_id] = results[commit_id]
             continue
         else:
-            p_results[commit.__str__()] = OrderedDict({
-                "compile_time": np.nan,
-                "best_time": np.nan,
-                "worst_time": np.nan,
-                "median_time": np.nan,
-                "mean_time": np.nan})
+            p_results[commit_id] = OrderedDict({
+                "compile_time": float('nan'),
+                "best_time": float('nan'),
+                "worst_time": float('nan'),
+                "median_time": float('nan'),
+                "mean_time": float('nan')})
 
     return p_results
 
@@ -73,10 +73,9 @@ def get_results(filepath):
         # read commits
         for line in f:
             if re.match(commit_pattern, line):
-                tmp_result = OrderedDict()
                 commit = re.findall(commit_id_pattern, line)[0]
                 commits.append(commit)
-                results[commit] = tmp_result
+                results[commit] = OrderedDict()
 
         def read_time(pattern, key):
             f.seek(0)
@@ -96,7 +95,7 @@ def get_results(filepath):
     return results
 
 
-def plot_results(results, show=True, title=None):
+def plot_results(results, title):
     """
     """
     compile_times = []
@@ -104,19 +103,17 @@ def plot_results(results, show=True, title=None):
     mean_times = []
     worst_times = []
     median_times = []
-    xcnts = []
-    cnt = 0
 
     for commit, result in results.items():
-        cnt += 1
-        xcnts.append(cnt)
         best_times.append(result['best_time'])
         mean_times.append(result['mean_time'])
         worst_times.append(result['worst_time'])
         median_times.append(result['median_time'])
         compile_times.append(result['compile_time'])
 
-    plt.suptitle(title) if title else plt.suptitle("Commits History")
+    xcnts = range(len(results))
+    plt.suptitle(title)
+
     #compile_ax configure
     plt.subplot(211)
     plt.plot(xcnts, compile_times, '--r*')
@@ -132,8 +129,7 @@ def plot_results(results, show=True, title=None):
     plt.grid(True)
     plt.xlim([0, xcnts[-1] + 1])
 
-    if show:
-        plt.show()
+    plt.show()
 
 
 def parse_args():
@@ -141,6 +137,8 @@ def parse_args():
     parser.add_argument("logfile")
     parser.add_argument(
         "--all", action="store_true", help="show all commits")
+    parser.add_argument(
+        "--title", default=None, help="Specify a title")
     return parser.parse_args()
 
 
@@ -157,7 +155,8 @@ def main():
         basic_info = get_basic_info(options.logfile)
         results = patch_results(results, basic_info)
 
-    plot_results(results, title=options.logfile[:-4])
+    plot_results(results,
+                 title=options.title or os.path.basename(options.logfile)[:-4])
 
 
 if __name__ == "__main__":

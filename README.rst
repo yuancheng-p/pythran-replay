@@ -19,24 +19,13 @@ Usage
 -----
 **Preparation**
 
-1. Dependencies
+Dependencies
 
         * Pythran_
         * gitpython_
 
  .. _Pythran: https://github.com/serge-sans-paille/pythran
  .. _gitpython: https://github.com/gitpython-developers/GitPython
-
-2. You should firstly configure your ``.replay-config`` in the same folder of
-   pythran-replay. Replace the cppflags prefix with yours(no space after -I). ::
-
-        `[user]
-        `cppflags = -I<prefix>/pythran/build/temp.linux-x86_64-2.7/nt2/include
-
-   NB: If your machine is 32 bits, your cppflags should probably be: ::
-
-        `[user]
-        `cppflags = -I<prefix>/pythran/build/temp.linux-i686-2.7/nt2/include
 
 
 **Typical usage**
@@ -47,7 +36,7 @@ The easiest way to explain is to give some examples.
    will select all the commits in the master branch and try to compile the
    benchmark selected. ::
 
-        $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url /path/to/pythran-repo l1=[2]*100000' 'dprod.dprod(l0,l1)' --url /path/to/pythran-repo
+        $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url /path/to/pythran-repo
 
 2. The command below will select the 100 latest commits and compile once every
    10 commits for the benchmark dprod.py
@@ -56,7 +45,7 @@ The easiest way to explain is to give some examples.
    it begin with this commit, and select 100 behind it. Then for every 10
    commit it compile once. ::
 
-        $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url ../pythran -b master --count_range 6c16cfd26a0c4cb146c2ffa3b374cbfe6fd2cc97:100 :10 -n 10 -r 21
+        $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url /path/to/pythran-repo -b master --count_range 6c16cfd26a0c4cb146c2ffa3b374cbfe6fd2cc97:100 :10 -n 10 -r 21
 
    As you saw from the examples above, the interface looks like timeit_ module
    in python except that you have to specify the branch, the pythran path and
@@ -69,7 +58,7 @@ The easiest way to explain is to give some examples.
 3. Select all commits between a start point and an end point.
    Compile for every 2 commits::
 
-        $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url ../pythran -b master --range 6c16cfd26a0c4cb146c2ffa3b374cbfe6fd2cc97:8a2df0af49430098c55120bb5cb11f485e9b3eb5:2  -n 10 -r 21
+        $> ./pythran-replay benchmark/dprod.py -s 'import dprod;l0=[1]*100000;l1=[2]*100000' 'dprod.dprod(l0,l1)' --url /path/to/pythran -b master --range 6c16cfd26a0c4cb146c2ffa3b374cbfe6fd2cc97:8a2df0af49430098c55120bb5cb11f485e9b3eb5:2 -n 10 -r 21
 
 
 plot-result
@@ -106,4 +95,6 @@ defaut into your ``.replay-config`` after the ``[user]`` section. ::
 
 To be improved
 ==============
-* use distutils to help install dependencies
+* use distutils to help install dependencies.
+
+* In the plot-result, it is better to gather all information in one loop.

@@ -109,7 +109,7 @@ def iter_commits(branch, begin, end, step=1):
             break
 
 
-def compile_bench_for_commit(bench, commit, url=".", quiet=False):
+def compile_bench_for_commit(bench, cppflags, commit, url=".", quiet=False):
     """Comile a benchmark for a pythran commit
 
     The benchmark is a **pythran file path**
@@ -126,7 +126,7 @@ def compile_bench_for_commit(bench, commit, url=".", quiet=False):
         return toc - tic
 
     REPO.git.checkout(commit)
-    cppflags = config.get('user', 'cppflags')
+
     script = "python %s/scripts/pythran %s %s" % (url, cppflags, bench)
     try:
         compile_time = compile_once(script)
@@ -413,8 +413,8 @@ def abort(e, workspace):
 def init(options):
     """ Initialize this program
 
-    init repo, environement, branch
-    check bench filepath
+    * initial repo, environement, branch, cppflags
+    * check bench_filepath
     """
     if options.url:
         url = options.url
@@ -439,7 +439,22 @@ def init(options):
     REPO = git.Repo(url)
     os.environ['PYTHONPATH'] += ":%s" % os.path.abspath(url)
 
-    return OrderedDict({'url': url, 'branch': branch})
+
+    # determin cppflags according to 32 bits or 64 bits machine
+    if sys.maxsize > 2**32:
+        cppflags = " -I%s/build/temp.linux-x86_64-2.7/nt2/include " %\
+            os.path.abspath(url)
+    else:
+        cppflags = " -I%s/build/temp.linux-i686-2.7/nt2/include " %\
+            os.path.abspath(url)
+    # additionnal appflags
+    if config.has_option('user', 'cppflags'):
+        cppflags += config.get('user', 'cppflags')
+
+    return OrderedDict({
+        'url': url,
+        'branch': branch,
+        'cppflags': cppflags})
 
 
 if __name__ == "__main__":
@@ -447,6 +462,7 @@ if __name__ == "__main__":
     init_msg = init(options)
     url = init_msg['url']
     branch = init_msg['branch']
+    cppflags = init_msg['cppflags']
 
     num_commits = sum(1 for commit in get_commits(options, branch))
     if not num_commits:
@@ -468,7 +484,7 @@ if __name__ == "__main__":
                 (commit_count, num_commits, commit.__str__()))
             commit_count += 1
             compile_time = compile_bench_for_commit(
-                options.bench, commit, url, quiet=options.quiet)
+                options.bench, cppflags, commit, url, quiet=options.quiet)
 
             if compile_time == -1:
                 continue  # skip if fail to compile
