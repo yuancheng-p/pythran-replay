@@ -98,3 +98,5 @@ To be improved
 * use distutils to help install dependencies.
 
 * In the plot-result, it is better to gather all information in one loop.
+
+* Add explanation for cppflags additionnal options

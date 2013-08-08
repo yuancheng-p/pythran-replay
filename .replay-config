@@ -1,2 +1,4 @@
 [user]
-cppflags = "-I<prefix>/pythran/build/temp.linux-x86_64-2.7/nt2/include"
+url = ../pythran
+branch = master
+#cppflags = -O2 -fopenmp
