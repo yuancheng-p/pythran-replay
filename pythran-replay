@@ -59,7 +59,7 @@ def verify_commit(branch, commit):
     commits = REPO.iter_commits(branch)
 
     for current in commits:
-        return str(current)== commit
+        return str(current) == commit
 
     log.error("commit \"%s\" is not in the branch \"%s\"" % (commit, branch))
     sys.exit()
@@ -439,9 +439,8 @@ def init(options):
     REPO = git.Repo(url)
     os.environ['PYTHONPATH'] += ":%s" % os.path.abspath(url)
 
-
     # determin cppflags according to 32 bits or 64 bits machine
-    if sys.maxsize > 2**32:
+    if sys.maxsize > 2 ** 32:
         cppflags = " -I%s/build/temp.linux-x86_64-2.7/nt2/include " %\
             os.path.abspath(url)
     else:
