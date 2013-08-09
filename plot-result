@@ -6,13 +6,13 @@ import os
 import sys
 import argparse
 import re
-import matplotlib.pyplot as plt
 try:
     from collections import OrderedDict
 except ImportError:
     from ordereddict import OrderedDict
 import linecache
 import logging
+import replaytools
 
 # logger setup
 logging.basicConfig(level=logging.DEBUG,
@@ -54,10 +54,7 @@ def patch_results(results, basic_info):
         else:
             p_results[commit_id] = OrderedDict({
                 "compile_time": float('nan'),
-                "best_time": float('nan'),
-                "worst_time": float('nan'),
-                "median_time": float('nan'),
-                "mean_time": float('nan')})
+                "best_time": float('nan')})
 
     return p_results
 
@@ -88,48 +85,8 @@ def get_results(filepath):
 
         read_time(".*Compile time.*", 'compile_time')
         read_time(".*Best time.*", 'best_time')
-        read_time(".*Worst time.*", 'worst_time')
-        read_time(".*Mean time.*", 'mean_time')
-        read_time(".*Median time.*", 'median_time')
 
     return results
-
-
-def plot_results(results, title):
-    """
-    """
-    compile_times = []
-    best_times = []
-    mean_times = []
-    worst_times = []
-    median_times = []
-
-    for commit, result in results.items():
-        best_times.append(result['best_time'])
-        mean_times.append(result['mean_time'])
-        worst_times.append(result['worst_time'])
-        median_times.append(result['median_time'])
-        compile_times.append(result['compile_time'])
-
-    xcnts = range(len(results))
-    plt.suptitle(title)
-
-    #compile_ax configure
-    plt.subplot(211)
-    plt.plot(xcnts, compile_times, '--r*')
-    plt.ylabel("Compile time")
-    plt.grid(True)
-    plt.xlim([0, xcnts[-1] + 1])
-
-    #execute_ax configure
-    plt.subplot(212)
-    plt.plot(xcnts, best_times, '--g*', label='$BestTime$')
-    plt.ylabel("Execute time")
-    plt.xlabel("Commit")
-    plt.grid(True)
-    plt.xlim([0, xcnts[-1] + 1])
-
-    plt.show()
 
 
 def parse_args():
@@ -155,7 +112,7 @@ def main():
         basic_info = get_basic_info(options.logfile)
         results = patch_results(results, basic_info)
 
-    plot_results(results,
+    replaytools.plot_results(results,
                  title=options.title or os.path.basename(options.logfile)[:-4])
 
 

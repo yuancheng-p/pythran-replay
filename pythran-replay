@@ -22,7 +22,7 @@ try:
 except:
     from ordereddict import OrderedDict
 import logging
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import commands
 import sys
 import traceback
@@ -31,6 +31,7 @@ import ConfigParser
 import re
 from multiprocessing import Process, Pipe
 from itertools import islice
+import replaytools
 
 # log settings
 logging.basicConfig(level=logging.DEBUG,
@@ -227,49 +228,6 @@ def build_reports(options, results,
     return filepath
 
 
-def plot_results(results, show=True, title=None):
-    """
-    """
-    compile_times = []
-    best_times = []
-    mean_times = []
-    worst_times = []
-    median_times = []
-    xcnts = []
-    cnt = 0
-
-    for commit, result in results.items():
-        cnt += 1
-        xcnts.append(cnt)
-        best_times.append(result['best_time'])
-        mean_times.append(result['mean_time'])
-        worst_times.append(result['worst_time'])
-        median_times.append(result['median_time'])
-        compile_times.append(result['compile_time'])
-
-    plt.suptitle(title) if title else plt.suptitle("Commits History")
-    #compile_ax configure
-    plt.subplot(211)
-    plt.plot(xcnts, compile_times, '--r*')
-    plt.ylabel("Compile time")
-    plt.grid(True)
-    up = max(compile_times) + 2
-    down = min(compile_times) - 2
-    plt.ylim([down, up])
-    plt.xlim([0, xcnts[-1] + 1])
-
-    #execute_ax configure
-    plt.subplot(212)
-    plt.plot(xcnts, best_times, '--g*', label='$BestTime$')
-    plt.ylabel("Execute time")
-    plt.xlabel("Commit")
-    plt.grid(True)
-    plt.xlim([0, xcnts[-1] + 1])
-
-    if show:
-        plt.show()
-
-
 def parse_args(args):
     parser = argparse.ArgumentParser(description="Pythran Commits Replay Tool")
 
@@ -391,9 +349,10 @@ def restore_workspace(workspace):
         workspace["isstashed"] = False
 
 
-def abort(e, workspace):
+def abort(workspace):
     log.warn("Aborting...")
     restore_workspace(workspace)
+    clean_workspace()
     traceback.print_exc()
     exit(1)
 
@@ -508,7 +467,7 @@ if __name__ == "__main__":
             clean_workspace()
         end_run = time()
     except KeyboardInterrupt as e:
-        abort(e, workspace)
+        abort(workspace)
 
     restore_workspace(workspace)
     total_time = end_run - begin_run
@@ -519,5 +478,5 @@ if __name__ == "__main__":
         filepath = build_reports(options, results,
                                  total_time, url, branch, filename)
         if options.show:
-            plot_results(results, show=options.show, title=filepath[:-4])
+            replaytools.plot_results(results, filepath[:-4])
     log.info("finished in %3f seconds" % total_time)
